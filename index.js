@@ -1,26 +1,40 @@
-import './Keepalive.js';
 import express from 'express';
+import bodyParser from 'body-parser';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import introRouter from './routes/intro.js';
-import outroRouter from './routes/outro.js';
-import mainRouter from './routes/main.js';
-import composeRouter from './routes/compose.js';
 
-dotenv.config();
+// Routes
+import healthRoute from './routes/health.js';
+import introRoute from './routes/intro.js';
+import mainRoute from './routes/main.js';
+import outroRoute from './routes/outro.js';
+import composeRoute from './routes/compose.js';
+
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-app.use('/intro', introRouter);
-app.use('/outro', outroRouter);
-app.use('/main', mainRouter);
-app.use('/compose', composeRouter);
+// Routes
+app.use('/', healthRoute);  // Health check
+app.use('/', introRoute);
+app.use('/', mainRoute);
+app.use('/', outroRoute);
+app.use('/', composeRoute);
 
-// ✅ Health Check Endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: Date.now() });
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🎙️ Server running on port ${PORT}`));
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err.stack);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
