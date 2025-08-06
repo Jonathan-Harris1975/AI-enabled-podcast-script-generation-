@@ -1,5 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const keepAlive = require('./utils/keepAlive');
 
 const introRoute = require('./routes/intro');
 const mainRoute = require('./routes/main');
@@ -16,6 +17,11 @@ app.use(mainRoute);
 app.use(outroRoute);
 app.use(composeRoute);
 app.use(clearSessionRoute);
+
+// KeepAlive — URL from environment variable
+if (process.env.KEEPALIVE_URL) {
+  keepAlive(process.env.KEEPALIVE_URL, process.env.KEEPALIVE_INTERVAL || 300000);
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
