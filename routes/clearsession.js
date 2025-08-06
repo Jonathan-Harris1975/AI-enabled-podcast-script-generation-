@@ -1,9 +1,16 @@
-const express = require('express');
-const router = express.Router();
-const { clearSession } = require('../utils/memoryCache');
+import express from 'express';
+import { clearSession } from '../utils/memoryCache.js';
 
+const router = express.Router();
+
+/**
+ * @route POST /clear-session
+ * @desc Clears cached content for a given sessionId
+ * @body { "sessionId": "abc123" }
+ */
 router.post('/clear-session', (req, res) => {
   const { sessionId } = req.body;
+
   if (!sessionId) {
     return res.status(400).json({ error: 'sessionId is required' });
   }
@@ -12,4 +19,4 @@ router.post('/clear-session', (req, res) => {
   res.json({ message: `Session ${sessionId} cleared from cache` });
 });
 
-module.exports = router;
+export default router;
