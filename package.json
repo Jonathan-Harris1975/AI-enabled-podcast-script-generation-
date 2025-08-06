@@ -1,21 +1,27 @@
 {
-  "name": "session-cache-api",
-  "version": "1.1.0",
-  "description": "Example Express API with in-memory session cache, Docker, GitLab CI/CD, and RSS fetch",
-  "main": "app.js",
+  "name": "podcast-script-generation",
+  "version": "2.2.1",
+  "description": "Podcast script generator for AI Weekly — generates witty Gen X‑tone scripts",
+  "type": "module",
+  "main": "index.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js",
-    "test": "jest --runInBand"
+    "start": "node index.js",
+    "keepalive": "node Keepalive.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "body-parser": "^1.20.2",
-    "rss-parser": "^3.13.0"
+    "axios": "^1.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "rss-parser": "^3.12.0",
+    "openai": "^4.20.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
-    "supertest": "^6.3.3",
-    "nodemon": "^3.1.0"
-  }
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "author": "Jonathan Harris",
+  "license": "MIT"
 }
