@@ -1,5 +1,5 @@
 import express from 'express';
-import { openai } from '../services/openai.js';
+import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { storeSection } from '../utils/memoryCache.js';
 import books from '../utils/books.json' assert { type: 'json' };
@@ -12,16 +12,21 @@ function getRandomBook() {
 }
 
 router.post('/outro', async (req, res) => {
-  const { sessionId } = req.body;
+  const { sessionId, prompt } = req.body;
   if (!sessionId) {
     return res.status(400).json({ error: 'sessionId is required' });
   }
 
   try {
-    const book = getRandomBook();
-    let promptContent = outroPrompt
-      .replace('{{book.title}}', book.title)
-      .replace('{{book.url}}', book.url);
+    let promptContent;
+    if (prompt) {
+      promptContent = prompt;
+    } else {
+      const book = getRandomBook();
+      promptContent = outroPrompt
+        .replace('{{book.title}}', book.title)
+        .replace('{{book.url}}', book.url);
+    }
 
     const resp = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
