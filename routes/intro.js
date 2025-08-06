@@ -9,13 +9,9 @@ router.post('/', async (req, res) => {
   try {
     const { date, prompt: externalPrompt } = req.body;
 
-    // Get weather for date
     const weatherSummary = await getWeatherSummary(date);
-
-    // Pick random Alan Turing quote
     const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
 
-    // Build base system prompt
     let systemPrompt = `
       Write a witty and intelligent podcast intro for "Turing’s Torch: AI Weekly" 
       with a British Gen X tone—dry humour, cultural nods, and a touch of sarcasm.
@@ -26,12 +22,10 @@ router.post('/', async (req, res) => {
       Keep the vibe confident, irreverent, and intellectually sharp.
     `;
 
-    // If an external prompt is provided, append it
     if (externalPrompt) {
       systemPrompt += `\n\nAdditional context from user: ${externalPrompt}`;
     }
 
-    // Call OpenAI
     const response = await OpenAI.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.75,
