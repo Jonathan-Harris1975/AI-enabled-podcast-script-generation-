@@ -3,11 +3,12 @@ import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { storeSection } from '../utils/memoryCache.js';
 import { introPrompt } from '../utils/promptTemplates.js';
+import { getWeatherSummary } from '../utils/weather.js';
 
 const router = express.Router();
 
 router.post('/intro', async (req, res) => {
-  const { sessionId, prompt } = req.body;
+  const { sessionId, prompt, date } = req.body;
 
   if (!sessionId) {
     return res.status(400).json({ error: 'sessionId is required' });
@@ -17,11 +18,20 @@ router.post('/intro', async (req, res) => {
     let promptContent;
 
     if (prompt) {
-      // Use provided custom prompt
-      promptContent = prompt;
+      // Use provided custom prompt (weather optional)
+      if (date) {
+        const weather = await getWeatherSummary(date);
+        promptContent = `${prompt}\n\nWeather note: ${weather}`;
+      } else {
+        promptContent = prompt;
+      }
     } else {
-      // Use default Gen X style intro
-      promptContent = introPrompt;
+      // Default Gen X intro requires date for weather
+      if (!date) {
+        return res.status(400).json({ error: 'date is required when using default prompt' });
+      }
+      const weather = await getWeatherSummary(date);
+      promptContent = `${introPrompt}\n\nToday's weather: ${weather}`;
     }
 
     const resp = await openai.chat.completions.create({
