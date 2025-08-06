@@ -4,17 +4,13 @@ import path from 'path';
 import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { storeSection } from '../utils/memoryCache.js';
-import { outroPrompt } from '../utils/promptTemplates.js';
+import { outroPromptWithSponsor } from '../utils/promptTemplates.js';
 
 const router = express.Router();
 
-// Load books.json manually (avoids assert { type: 'json' } issue)
+// Load books.json manually (optional if not using in promptTemplates)
 const booksPath = path.join(process.cwd(), 'utils', 'books.json');
 const books = JSON.parse(fs.readFileSync(booksPath, 'utf-8'));
-
-function getRandomBook() {
-  return books[Math.floor(Math.random() * books.length)];
-}
 
 router.post('/outro', async (req, res) => {
   const { sessionId, prompt } = req.body;
@@ -27,10 +23,7 @@ router.post('/outro', async (req, res) => {
     if (prompt) {
       promptContent = prompt;
     } else {
-      const book = getRandomBook();
-      promptContent = outroPrompt
-        .replace('{{book.title}}', book.title)
-        .replace('{{book.url}}', book.url);
+      promptContent = outroPromptWithSponsor();
     }
 
     const resp = await openai.chat.completions.create({
