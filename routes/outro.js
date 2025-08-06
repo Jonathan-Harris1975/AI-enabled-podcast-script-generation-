@@ -8,7 +8,7 @@ import { outroPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
 
-// Load books.json manually via fs
+// Load books.json manually (avoids assert { type: 'json' } issue)
 const booksPath = path.join(process.cwd(), 'utils', 'books.json');
 const books = JSON.parse(fs.readFileSync(booksPath, 'utf-8'));
 
