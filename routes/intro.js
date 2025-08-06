@@ -8,12 +8,15 @@ const router = express.Router();
 
 router.post('/intro', async (req, res) => {
   const { sessionId, prompt, date } = req.body;
+
   if (!sessionId) {
     return res.status(400).json({ error: 'sessionId is required' });
   }
 
   try {
-    let fullPrompt = prompt || '';
+    let fullPrompt = prompt || 'Write a single engaging podcast intro.';
+    
+    // Append weather info if date provided
     if (date) {
       try {
         const weatherInfo = await getWeatherSummary(date);
@@ -24,16 +27,17 @@ router.post('/intro', async (req, res) => {
     }
 
     const resp = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo', // lighter for intro
+      model: 'gpt-3.5-turbo',
       temperature: 0.75,
       messages: [
-        { role: 'system', content: 'Write a single polished intro; no quotes, clean text.' },
+        { role: 'system', content: 'Write a polished, concise podcast intro in British English.' },
         { role: 'user', content: fullPrompt }
-      ],
+      ]
     });
 
     const content = sanitizeText(resp.choices[0].message.content);
     storeSection(sessionId, 'intro', content);
+
     res.json({ sessionId, content });
   } catch (error) {
     console.error('Intro error:', error.message);
