@@ -1,6 +1,4 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
 import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { storeSection } from '../utils/memoryCache.js';
@@ -8,21 +6,22 @@ import { outroPromptWithSponsor } from '../utils/promptTemplates.js';
 
 const router = express.Router();
 
-// Load books.json manually (optional if not using in promptTemplates)
-const booksPath = path.join(process.cwd(), 'utils', 'books.json');
-const books = JSON.parse(fs.readFileSync(booksPath, 'utf-8'));
-
 router.post('/outro', async (req, res) => {
   const { sessionId, prompt } = req.body;
+
   if (!sessionId) {
     return res.status(400).json({ error: 'sessionId is required' });
   }
 
   try {
     let promptContent;
+
     if (prompt) {
-      promptContent = prompt;
+      // Append book sponsor to provided prompt
+      const sponsorPrompt = outroPromptWithSponsor();
+      promptContent = `${prompt}\n\nInclude sponsor details:\n${sponsorPrompt}`;
     } else {
+      // Use default Gen X outro with sponsor
       promptContent = outroPromptWithSponsor();
     }
 
@@ -30,7 +29,7 @@ router.post('/outro', async (req, res) => {
       model: 'gpt-3.5-turbo',
       temperature: 0.75,
       messages: [
-        { role: 'system', content: 'Write a polished, concise podcast outro in British English.' },
+        { role: 'system', content: 'You are a sarcastic Gen X podcast outro writer.' },
         { role: 'user', content: promptContent }
       ]
     });
