@@ -44,7 +44,7 @@ router.post('/compose', async (req, res) => {
           role: 'system',
           content:
             editorPrompt ||
-            'You are a podcast editor. Rewrite the following transcript into a smooth, engaging, cohesive podcast script with witty British flair.'
+            'You are a sharp, witty British Gen X podcast editor. Stitch together the provided intro, main segments, and outro into one cohesive podcast script. Maintain consistent tone and pacing, using dry humour and cultural flair throughout. Ensure transitions between sections are natural and polished. Output a single plain text block — no formatting, no markdown, just clean, broadcast-ready text..'
         },
         { role: 'user', content: combinedText }
       ]
