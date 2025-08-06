@@ -1,50 +1,43 @@
 import express from 'express';
-import fetch from 'node-fetch';
 import OpenAI from 'openai';
-import { v4 as uuidv4 } from 'uuid';
 import getWeatherSummary from '../utils/weather.js';
-import getQuote from '../utils/quotes.js';
+import getDailyQuote from '../utils/quotes.js';
 
 const router = express.Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// POST /intro
 router.post('/', async (req, res) => {
-  const { date, prompt: externalPrompt, sessionId: clientSessionId } = req.body;
-  const sessionId = clientSessionId || uuidv4();
-
   try {
-    // Fetch weather + quote
-    const weatherSummary = await getWeatherSummary(date || new Date().toISOString().split('T')[0]);
-    const quote = await getQuote();
+    const { date, customPrompt, sessionId } = req.body;
 
-    // Default Gen X intro prompt
-    let systemPrompt = `Write a witty and intelligent podcast intro for "Turing’s Torch: AI Weekly" with a British Gen X tone — dry humour, cultural nods, and a touch of sarcasm. 
-Start with a cheeky take on the London weather (moaning encouraged) using this weather data: ${weatherSummary}.
-Include this inspirational quote: "${quote}".
-Introduce the host Jonathan Harris by name and set the tone for exploring AI news with confidence, irreverence, and intellect — hooking Gen X listeners without sounding robotic.`;
-
-    // Override with external prompt if provided
-    if (externalPrompt && externalPrompt.trim().length > 0) {
-      systemPrompt = externalPrompt;
+    if (!date) {
+      return res.status(400).json({ error: 'date is required' });
     }
 
-    // Call OpenAI
+    const weatherSummary = await getWeatherSummary(date);
+    const dailyQuote = await getDailyQuote();
+
+    const prompt = customPrompt || `
+      Write a witty and intelligent podcast intro for "Turing's Torch: AI Weekly"
+      with a British Gen X tone—dry humour, cultural nods, and a touch of sarcasm.
+      Include a cheeky remark about today's London weather: ${weatherSummary}.
+      Also weave in this daily quote: "${dailyQuote}".
+      Introduce the host, Jonathan Harris, and set the tone for exploring AI news.
+    `;
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
+      temperature: 0.75,
       messages: [
-        { role: 'system', content: systemPrompt }
-      ],
-      max_tokens: 400
+        { role: 'system', content: prompt }
+      ]
     });
 
-    res.json({
-      sessionId,
-      intro: completion.choices[0].message.content
-    });
+    res.json({ text: completion.choices[0].message.content });
+
   } catch (error) {
-    console.error('Error generating intro:', error);
-    res.status(500).json({ error: 'Failed to generate intro', details: error.message });
+    console.error(error);
+    res.status(500).json({ error: 'Error generating intro' });
   }
 });
 
