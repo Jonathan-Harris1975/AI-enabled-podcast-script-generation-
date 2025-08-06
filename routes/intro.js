@@ -1,43 +1,52 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import getWeatherSummary from '../utils/weather.js';
-import getDailyQuote from '../utils/quotes.js';
+import getQuote from '../utils/quotes.js';
 
 const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Optional: load extra resources here if needed
 
 router.post('/', async (req, res) => {
   try {
-    const { date, customPrompt, sessionId } = req.body;
+    const { prompt: userPrompt, date } = req.body;
 
-    if (!date) {
-      return res.status(400).json({ error: 'date is required' });
-    }
-
+    // Fetch weather + quote
     const weatherSummary = await getWeatherSummary(date);
-    const dailyQuote = await getDailyQuote();
+    const quote = await getQuote();
 
-    const prompt = customPrompt || `
-      Write a witty and intelligent podcast intro for "Turing's Torch: AI Weekly"
-      with a British Gen X tone—dry humour, cultural nods, and a touch of sarcasm.
-      Include a cheeky remark about today's London weather: ${weatherSummary}.
-      Also weave in this daily quote: "${dailyQuote}".
-      Introduce the host, Jonathan Harris, and set the tone for exploring AI news.
+    const basePrompt = `
+Write a witty and intelligent podcast intro for "Turing’s Torch: AI Weekly" hosted by Jonathan Harris
+in a British Gen X tone — dry humour, cultural nods, and a touch of sarcasm.
+Start with a cheeky take on the London weather: ${weatherSummary}.
+Include the quote of the day: "${quote}".
+Set the tone for exploring AI news with confidence, irreverence, and intellectual sharpness.
     `;
+
+    const messages = [
+      { role: 'system', content: basePrompt },
+      ...(userPrompt ? [{ role: 'user', content: userPrompt }] : [])
+    ];
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      temperature: 0.75,
-      messages: [
-        { role: 'system', content: prompt }
-      ]
+      messages,
+      temperature: 0.75
     });
 
-    res.json({ text: completion.choices[0].message.content });
-
+    res.json({ intro: completion.choices[0].message.content });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Error generating intro' });
+    res.status(500).json({ error: 'Failed to generate intro' });
   }
 });
 
