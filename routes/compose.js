@@ -1,5 +1,5 @@
 import express from 'express';
-import { openai } from '../services/openai.js';
+import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { getSection } from '../utils/memoryCache.js';
 import {
