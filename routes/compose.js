@@ -1,40 +1,51 @@
 import express from 'express';
-import { openai } from '../utils/openai.js';
-import { sanitizeText } from '../utils/sanitize.js';
-import { getSection } from '../utils/memoryCache.js';
-import {
-  getTitleDescriptionPrompt,
-  getSEOKeywordsPrompt,
-  getArtworkPrompt
-} from '../utils/podcastHelpers.js';
+import memoryCache from '../utils/memoryCache.js';
+import { callOpenAI } from '../utils/openai.js';
+import generateIntro from './intro.js';
+import generateMain from './main.js';
+import generateOutro from './outro.js';
 
 const router = express.Router();
 
-router.post('/compose', async (req, res) => {
-  const { sessionId, intro, main, outro, editorPrompt } = req.body;
+router.post('/', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
 
-  if (!sessionId) {
-    return res.status(400).json({ error: 'sessionId is required' });
-  }
+    let intro = memoryCache.getSection(sessionId, 'intro');
+    let main = memoryCache.getSection(sessionId, 'main');
+    let outro = memoryCache.getSection(sessionId, 'outro');
 
-  const finalIntro = intro || getSection(sessionId, 'intro');
-  const finalMain = main || getSection(sessionId, 'main');
-  const finalOutro = outro || getSection(sessionId, 'outro');
+    // Auto-generate if missing
+    if (!intro) {
+      intro = (await generateIntro(req, res, true)) || '';
+    }
+    if (!main) {
+      main = (await generateMain(req, res, true)) || '';
+    }
+    if (!outro) {
+      outro = (await generateOutro(req, res, true)) || '';
+    }
 
-  if (!finalIntro || !finalMain || !finalOutro) {
-    return res.status(400).json({
-      error: 'Missing intro, main, or outro and not found in cache'
+    const editorPrompt = `Combine the following sections into a polished podcast script. Keep flow and tone consistent.
+Intro:\n${intro}\n\nMain:\n${main}\n\nOutro:\n${outro}`;
+
+    const finalScript = await callOpenAI(editorPrompt);
+
+    res.json({
+      sessionId,
+      intro,
+      main,
+      outro,
+      finalScript
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to compose final script' });
   }
+});
 
-  const flatMain = Array.isArray(finalMain)
-    ? finalMain.map(item => (typeof item === 'string' ? item : item?.result || '')).map(sanitizeText)
-    : [sanitizeText(finalMain)];
-
-  const cleanIntro = sanitizeText(finalIntro);
-  const cleanOutro = sanitizeText(finalOutro);
-  const combinedText = [cleanIntro, ...flatMain, cleanOutro].join(' ');
-
+export default router;
   try {
     const scriptResp = await openai.chat.completions.create({
       model: 'gpt-4o',
