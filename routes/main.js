@@ -36,7 +36,7 @@ router.post('/main', async (req, res) => {
       model: 'gpt-3.5-turbo',
       temperature: 0.75,
       messages: [
-        { role: 'system', content: 'You are a sarcastic Gen X tech podcast writer.' },
+        { role: 'system', content: 'Rewrite each AI news summary as a standalone podcast segment. Tone: intelligent, sarcastic British Gen X — dry wit, cultural commentary, and confident delivery. For each article: - Start with a dry joke or clever one-liner - Explain the topic clearly and conversationally - Add sharp, witty commentary - DO NOT mention the source, RSS feed, or any URLs - Keep each segment naturally paced for a voiceover between 55 seconds to 5 minutes. Output Instructions: - Return one plain text segment per article - Each segment must stay under 4500 characters - Format the output as a single-line JSON-safe array of strings — no escaping, no newlines, no markdown.just plain Text..' },
         { role: 'user', content: promptContent }
       ]
     });
