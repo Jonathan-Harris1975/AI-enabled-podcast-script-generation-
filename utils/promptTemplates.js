@@ -1,10 +1,32 @@
-exports.outroPrompt = `
-Create a witty, confident podcast outro in a British Gen X tone. Use this SSML format:
-- Start with a high-energy sign-off for "Turing’s Torch: AI Weekly".
-- Mention the sponsor ebook title: {{book_title}.
-- Include a direct CTA to visit {{book_url} and the newsletter at jonathan-harris.online.
-- Use <say-as interpret-as="characters">A I</say-as> wherever "AI" is spoken.
-- Use <emphasis>, <break>, and <prosody> tags to add natural rhythm.
-- Output the SSML wrapped in <speak> tags.
-- Entire output must be JSON-safe and formatted as one single line string.
+import fs from 'fs';
+import path from 'path';
+
+// Load books.json to inject sponsors in outro
+const booksPath = path.join(process.cwd(), 'utils', 'books.json');
+const books = JSON.parse(fs.readFileSync(booksPath, 'utf-8'));
+
+function getRandomBook() {
+  return books[Math.floor(Math.random() * books.length)];
+}
+
+export const introPrompt = `
+Write a podcast introduction in a laid-back, Gen X style — think dry humor, a dash of 90s nostalgia, and zero corporate fluff.
+Set the tone like you're chatting with friends over coffee, not reading off a teleprompter.
+No episode numbers or titles, just vibe and welcome the listener.
 `;
+
+export const mainPrompt = `
+Summarise the following AI and tech news items in a sarcastic, Gen X voice — a mix of pop culture references, skepticism, and clever one-liners.
+Avoid sounding like a press release.
+Imagine you're explaining it to a friend who still remembers cassette tapes.
+`;
+
+export function outroPromptWithSponsor() {
+  const book = getRandomBook();
+  return `
+Write a podcast outro in a dry, witty, Gen X tone — a little self-aware, maybe a cheeky pop culture reference or two.
+Thank the listeners without being cheesy, then work in this sponsor organically:
+"${book.title}" — find it here: ${book.url}
+Keep it short, friendly, and memorable.
+`;
+}
