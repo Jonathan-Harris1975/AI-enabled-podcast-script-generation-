@@ -1,11 +1,16 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { storeSection } from '../utils/memoryCache.js';
-import books from '../utils/books.json' assert { type: 'json' };
 import { outroPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
+
+// Load books.json manually via fs
+const booksPath = path.join(process.cwd(), 'utils', 'books.json');
+const books = JSON.parse(fs.readFileSync(booksPath, 'utf-8'));
 
 function getRandomBook() {
   return books[Math.floor(Math.random() * books.length)];
