@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { openai } from '../services/openai.js';
+import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { storeSection } from '../utils/memoryCache.js';
 import { getWeatherSummary } from '../utils/weather.js';
@@ -21,14 +21,14 @@ function getRandomQuote() {
 }
 
 router.post('/intro', async (req, res) => {
-  const { sessionId, date } = req.body;
+  const { sessionId, date, prompt } = req.body;
 
   if (!sessionId) {
     return res.status(400).json({ error: 'sessionId is required' });
   }
 
   try {
-    let promptContent = introPrompt;
+    let promptContent = prompt || introPrompt;
 
     if (date) {
       try {
@@ -39,37 +39,6 @@ router.post('/intro', async (req, res) => {
       }
     }
 
-    const quote = getRandomQuote();
-    if (quote) {
-      promptContent += `\n\nQuote of the day: "${quote}" — Alan Turing`;
-    }
-
-    const resp = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      temperature: 0.75,
-      messages: [
-        { role: 'system', content: 'You are a witty British podcast host.' },
-        { role: 'user', content: promptContent }
-      ]
-    });
-
-    const content = sanitizeText(resp.choices[0].message.content);
-    storeSection(sessionId, 'intro', content);
-
-    res.json({ sessionId, content });
-  } catch (error) {
-    console.error('Intro error:', error.message);
-    res.status(500).json({ error: 'Intro generation failed', details: error.message });
-  }
-});
-
-export default router;        promptContent += `\n\nWeather summary: ${weatherInfo}`;
-      } catch (err) {
-        console.warn('Weather fetch failed in /intro:', err.message);
-      }
-    }
-
-    // Add random quote
     const quote = getRandomQuote();
     if (quote) {
       promptContent += `\n\nQuote of the day: "${quote}" — Alan Turing`;
