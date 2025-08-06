@@ -1,51 +1,45 @@
 import express from 'express';
 import Parser from 'rss-parser';
-import OpenAI from 'openai';
+import OpenAI from '../utils/openai.js';
 
 const router = express.Router();
 const parser = new Parser();
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 router.post('/', async (req, res) => {
   try {
-    const { feedUrl, prompt: userPrompt, maxAgeDays = 7, maxArticles = 40 } = req.body;
+    const { feedUrl, maxDays = 7, maxArticles = 40, prompt: externalPrompt } = req.body;
 
     const feed = await parser.parseURL(feedUrl);
 
-    // Filter by age
-    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-    const recentItems = feed.items
-      .filter(item => new Date(item.pubDate).getTime() > cutoff)
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - maxDays);
+
+    const articles = feed.items
+      .filter(item => new Date(item.pubDate) >= cutoffDate)
       .slice(0, maxArticles);
 
-    const articlesText = recentItems
-      .map(item => `Title: ${item.title}\nLink: ${item.link}`)
-      .join('\n\n');
-
-    const basePrompt = `
-Summarise and comment on the following AI news articles for "Turing’s Torch: AI Weekly" hosted by Jonathan Harris.
-Make it insightful, witty, and British Gen X in tone.
-Articles:
-${articlesText}
+    let systemPrompt = `
+      Summarise the following ${articles.length} AI-related articles in a sharp, witty, British Gen X style.  
+      Avoid corporate jargon, add cultural references where appropriate.  
     `;
 
-    const messages = [
-      { role: 'system', content: basePrompt },
-      ...(userPrompt ? [{ role: 'user', content: userPrompt }] : [])
-    ];
+    if (externalPrompt) {
+      systemPrompt += `\n\nAdditional context from user: ${externalPrompt}`;
+    }
 
-    const completion = await openai.chat.completions.create({
+    const response = await OpenAI.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages,
-      temperature: 0.75
+      temperature: 0.75,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: JSON.stringify(articles) }
+      ],
     });
 
-    res.json({ main: completion.choices[0].message.content });
+    res.json({ summary: response.choices[0].message.content });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to generate main section' });
+    console.error('Error processing feed:', error);
+    res.status(500).json({ error: 'Failed to process feed' });
   }
 });
 
