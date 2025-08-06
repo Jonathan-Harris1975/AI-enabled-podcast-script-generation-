@@ -1,74 +1,59 @@
 import express from 'express';
-import OpenAI from '../utils/openai.js';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { getRandomItem } from '../utils/podcastHelpers.js';
+import OpenAI from 'openai';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Get file paths
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Read books.json manually (avoids assert { type: 'json' })
+const booksPath = path.join(process.cwd(), 'utils', 'books.json');
+let books = [];
+try {
+  const data = fs.readFileSync(booksPath, 'utf8');
+  books = JSON.parse(data);
+} catch (err) {
+  console.error('Error reading books.json:', err);
+}
 
-// Load books.json manually (no assert syntax)
-const booksPath = path.join(__dirname, '../utils/books.json');
-const books = JSON.parse(fs.readFileSync(booksPath, 'utf-8'));
-
-/**
- * Outro endpoint
- * Generates a witty British Gen X outro for Turing's Torch: AI Weekly
- * Automatically includes Jonathan Harris as host and a random book sponsor
- */
+// POST /outro
 router.post('/', async (req, res) => {
+  const { prompt: externalPrompt, sessionId: clientSessionId } = req.body;
+  const sessionId = clientSessionId || uuidv4();
+
   try {
-    const { prompt: externalPrompt } = req.body;
+    // Pick a random book
+    const sponsorBook = books.length > 0 ? books[Math.floor(Math.random() * books.length)] : null;
 
-    // Pick a random book sponsor
-    const bookSponsor = getRandomItem(books);
+    // Default Gen X outro prompt
+    let systemPrompt = `Write a confident, witty podcast outro for "Turing’s Torch: AI Weekly" in a dry British Gen X tone.
+New episodes drop every Friday.
+Include a nod to the show's host, Jonathan Harris, and close with a clever sign-off.
+Also mention this week's sponsor book: ${sponsorBook ? sponsorBook.title + ' by ' + sponsorBook.author : 'No sponsor book available'}.
+Make it smart, sarcastic, and memorable.`;
 
-    const systemPrompt = `
-      Write a confident, witty podcast outro for "Turing’s Torch: AI Weekly" 
-      with a British Gen X tone—dry humour, cultural nods, and a touch of sarcasm.
+    // Override with external prompt if provided
+    if (externalPrompt && externalPrompt.trim().length > 0) {
+      systemPrompt = externalPrompt;
+    }
 
-      Always:
-      - Mention the host Jonathan Harris
-      - Mention the podcast name
-      - Include a sign-off
-      - Include this book as a cheeky sponsor: "${bookSponsor.title}" by ${bookSponsor.author}
-      - Encourage visiting jonathan-harris.online and subscribing to the newsletter.
-    `;
-
-    const userPrompt = externalPrompt || `
-      And that’s your lot for this week on Turing’s Torch: AI Weekly. 
-      We’ll be back next Friday—unless the machines beat us to it. 
-      Until then, sharpen your minds with jonathan-harris.online. 
-      Think of it as your weekly firewall against ignorance. 
-      I’m Jonathan Harris, signing off before the AI replaces me with a hologram. Cheers.
-    `;
-
-    const completion = await OpenAI.chat.completions.create({
+    // Call OpenAI
+    const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
+        { role: 'system', content: systemPrompt }
       ],
-      temperature: 0.8
+      max_tokens: 400
     });
-
-    const outroText = completion.choices[0].message.content;
 
     res.json({
-      outro: outroText,
-      sponsor: {
-        title: bookSponsor.title,
-        author: bookSponsor.author
-      }
+      sessionId,
+      outro: completion.choices[0].message.content
     });
-
   } catch (error) {
     console.error('Error generating outro:', error);
-    res.status(500).json({ error: 'Failed to generate outro' });
+    res.status(500).json({ error: 'Failed to generate outro', details: error.message });
   }
 });
 
