@@ -3,7 +3,6 @@ import { openai } from '../services/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { getSection } from '../utils/memoryCache.js';
 import {
-  splitTextForTTS,
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
   getArtworkPrompt
@@ -18,7 +17,6 @@ router.post('/compose', async (req, res) => {
     return res.status(400).json({ error: 'sessionId is required' });
   }
 
-  // Pull missing sections from cache
   const finalIntro = intro || getSection(sessionId, 'intro');
   const finalMain = main || getSection(sessionId, 'main');
   const finalOutro = outro || getSection(sessionId, 'outro');
@@ -29,12 +27,8 @@ router.post('/compose', async (req, res) => {
     });
   }
 
-  // Flatten main array into plain text list
   const flatMain = Array.isArray(finalMain)
-    ? finalMain
-        .map(item => (typeof item === 'string' ? item : item?.result || ''))
-        .map(sanitizeText)
-        .filter(Boolean)
+    ? finalMain.map(item => (typeof item === 'string' ? item : item?.result || '')).map(sanitizeText)
     : [sanitizeText(finalMain)];
 
   const cleanIntro = sanitizeText(finalIntro);
@@ -42,7 +36,6 @@ router.post('/compose', async (req, res) => {
   const combinedText = [cleanIntro, ...flatMain, cleanOutro].join(' ');
 
   try {
-    // Step 1: Create final script
     const scriptResp = await openai.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.65,
@@ -58,9 +51,7 @@ router.post('/compose', async (req, res) => {
     });
 
     const transcript = sanitizeText(scriptResp.choices[0].message.content);
-    const tts = splitTextForTTS(transcript);
 
-    // Step 2: Title + Description
     const tdRes = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL_META || 'gpt-3.5-turbo',
       temperature: 0.7,
@@ -77,7 +68,6 @@ router.post('/compose', async (req, res) => {
       console.warn('Failed to parse title/description JSON:', err.message);
     }
 
-    // Step 3: SEO Keywords
     const seoRes = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL_META || 'gpt-3.5-turbo',
       temperature: 0.5,
@@ -86,7 +76,6 @@ router.post('/compose', async (req, res) => {
 
     const seo_keywords = seoRes.choices[0].message.content.trim();
 
-    // Step 4: Artwork Prompt
     const artRes = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL_META || 'gpt-3.5-turbo',
       temperature: 0.6,
@@ -97,7 +86,6 @@ router.post('/compose', async (req, res) => {
 
     res.json({
       sessionId,
-      tts,
       transcript,
       title,
       description,
