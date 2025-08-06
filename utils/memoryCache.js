@@ -39,9 +39,4 @@ function cleanup() {
   }
 }
 
-module.exports = {
-  storeSection,
-  getSection,
-  getAllSections,
-  clearSession
-};
+export { storeSection, getSection, getAllSections, clearSession };
