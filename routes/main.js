@@ -1,46 +1,66 @@
-const express = require('express');
-const router = express.Router();
-const { storeSection } = require('../utils/memoryCache');
-const Parser = require('rss-parser');
+import express from 'express';
+import Parser from 'rss-parser';
+import { openai } from '../services/openai.js';
+import { sanitizeText } from '../utils/sanitize.js';
+import { storeSection } from '../utils/memoryCache.js';
 
+const router = express.Router();
 const parser = new Parser();
 
-async function fetchRSSContent(feedUrl, limit = 3) {
-  try {
-    const feed = await parser.parseURL(feedUrl);
-    return feed.items.slice(0, limit).map(item => ({
-      title: item.title,
-      link: item.link,
-      pubDate: item.pubDate,
-      contentSnippet: item.contentSnippet
-    }));
-  } catch (err) {
-    console.error('Failed to fetch RSS:', err);
-    throw new Error('RSS fetch failed');
-  }
-}
+// Default RSS feed if none provided in payload
+const DEFAULT_RSS_URL = 'https://venturebeat.com/feed/';
 
 router.post('/main', async (req, res) => {
-  const { sessionId, date, rssUrl } = req.body;
+  const { sessionId, rssUrl, maxItems = 6 } = req.body;
+
   if (!sessionId) {
     return res.status(400).json({ error: 'sessionId is required' });
   }
 
   try {
-    let content;
-    if (rssUrl) {
-      const articles = await fetchRSSContent(rssUrl, 3);
-      content = `Main Section (from RSS):\n` + articles.map(a => `- ${a.title} (${a.link})`).join('\n');
-    } else {
-      content = `Generated main section for date ${date || 'N/A'}`;
+    // Pick feed URL from payload or fallback to default
+    const feed = await parser.parseURL(rssUrl || DEFAULT_RSS_URL);
+
+    // Extract up to maxItems and sanitize
+    const segments = feed.items
+      .slice(0, maxItems)
+      .map(item =>
+        sanitizeText(item.contentSnippet || item.content || item.title || '')
+      )
+      .filter(text => text.length > 10);
+
+    if (segments.length === 0) {
+      return res.status(400).json({ error: 'No valid articles found in feed' });
     }
 
-    storeSection(sessionId, 'main', content);
-    res.json({ sessionId, content });
+    // Summarize each segment via OpenAI
+    const results = [];
+    for (const text of segments) {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        temperature: 0.6,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Write a shorter, witty podcast-length summary of the following segment—focus on AI and dry humour.'
+          },
+          { role: 'user', content: text }
+        ]
+      });
+      const summary = sanitizeText(resp.choices[0].message.content);
+      results.push(summary);
+    }
+
+    // Store in memory cache for later use in /compose
+    storeSection(sessionId, 'main', results);
+
+    // Return summaries
+    res.json({ sessionId, result: results });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to generate main section' });
+    console.error('Main route error:', err.message);
+    res.status(502).json({ error: 'Main fetch failed', details: err.message });
   }
 });
 
-module.exports = router;
+export default router;
