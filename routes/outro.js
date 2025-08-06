@@ -25,12 +25,18 @@ router.post('/outro', async (req, res) => {
       promptContent = outroPromptWithSponsor();
     }
 
+    const systemMessage = `Write a confident, witty podcast outro for Turing’s Torch: AI Weekly in a dry British Gen X tone. 
+New episodes drop every Friday. And that’s your lot for this week on Turing’s Torch: AI Weekly. 
+We’ll be back next Friday—unless the machines beat us to it. 
+Until then, sharpen your minds with jonathan-harris.online. 
+While you’re there, subscribe to the newsletter—think of it as your weekly firewall against ignorance. 
+I'm Jonathan Harris, signing off before the AI replaces me with a hologram. Cheers.`;
+
     const resp = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       temperature: 0.75,
       messages: [
-        { role: 'system', content: 'Write a confident, witty podcast outro for Turing’s Torch: AI Weekly  in a dry British Gen X tone. New episodes drop every Friday. : And that’s your lot for this week on Turing’s Torch: AI Weekly. We’ll be back next Friday—unless the machines beat us to it. Until then, sharpen your minds with jonathan-harris.online. While you're there, subscribe to the newsletter—think of it as your weekly firewall against ignorance. I'm Jonathan Harris, signing off before the AI replaces me with a hologram. Cheers
-' },
+        { role: 'system', content: systemMessage },
         { role: 'user', content: promptContent }
       ]
     });
