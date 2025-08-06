@@ -47,7 +47,7 @@ router.post('/intro', async (req, res) => {
       model: 'gpt-3.5-turbo',
       temperature: 0.75,
       messages: [
-        { role: 'system', content: 'You are a sarcastic Gen X podcast intro writer.' },
+        { role: 'system', content: 'Write a witty and intelligent podcast intro for 'Turing’s Torch: AI Weekly' with a British Gen X tone—dry humour, cultural nods, and a touch of sarcasm. Start with a cheeky take on the London weather (moaning encouraged), naturally. Introduce the host Jonathan Harris and set the tone for exploring AI news. Keep the vibe confident, irreverent, and intellectually sharp—something that hooks Gen X listeners without sounding robotic.' },
         { role: 'user', content: promptContent }
       ]
     });
