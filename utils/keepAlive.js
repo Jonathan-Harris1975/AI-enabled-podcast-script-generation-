@@ -1,24 +1,18 @@
-const https = require('https');
-const http = require('http');
+import fetch from 'node-fetch';
 
-function keepAlive(url, intervalMs = 300000) { // default: 5 minutes
-  if (!url) {
-    console.warn('KeepAlive disabled: No URL provided.');
-    return;
-  }
+const URL = 'https://podcast-script-generation.onrender.com/health';
+const INTERVAL = 14 * 60 * 1000; // every 14 minutes
 
-  console.log(`KeepAlive enabled: Pinging ${url} every ${intervalMs / 1000} seconds`);
-
-  setInterval(() => {
-    const client = url.startsWith('https') ? https : http;
-    client
-      .get(url, (res) => {
-        console.log(`[KeepAlive] Ping to ${url} -> ${res.statusCode}`);
-      })
-      .on('error', (err) => {
-        console.error('[KeepAlive] Error pinging URL:', err.message);
-      });
-  }, intervalMs);
+function startKeepAlive() {
+  setInterval(async () => {
+    try {
+      const res = await fetch(URL);
+      const data = await res.json();
+      console.log(`[KeepAlive] ${new Date().toISOString()} Status: ${data.status}`);
+    } catch (err) {
+      console.error('[KeepAlive] Failed:', err.message);
+    }
+  }, INTERVAL);
 }
 
-module.exports = keepAlive;
+export default startKeepAlive;
