@@ -1,51 +1,52 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
+import quotes from '../utils/quotes.js';
 import getWeatherSummary from '../utils/weather.js';
-import getQuote from '../utils/quotes.js';
 
 const router = express.Router();
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Optional: load extra resources here if needed
-
 router.post('/', async (req, res) => {
   try {
-    const { prompt: userPrompt, date } = req.body;
+    const { date, externalPrompt } = req.body;
 
-    // Fetch weather + quote
+    // Weather data for intro
     const weatherSummary = await getWeatherSummary(date);
-    const quote = await getQuote();
 
-    const basePrompt = `
-Write a witty and intelligent podcast intro for "Turing’s Torch: AI Weekly" hosted by Jonathan Harris
-in a British Gen X tone — dry humour, cultural nods, and a touch of sarcasm.
-Start with a cheeky take on the London weather: ${weatherSummary}.
-Include the quote of the day: "${quote}".
-Set the tone for exploring AI news with confidence, irreverence, and intellectual sharpness.
+    // Pick a random quote from quotes.txt
+    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+
+    // Build the system prompt
+    const systemPrompt = `
+      Write a witty and intelligent podcast intro for "Turing’s Torch: AI Weekly"
+      with a British Gen X tone — dry humour, cultural nods, and a touch of sarcasm.
+      Start with a cheeky take on the London weather (moaning encouraged) based on:
+      "${weatherSummary}".
+
+      Include this quote somewhere in the intro: "${randomQuote}"
+
+      Introduce the host, Jonathan Harris, by name and clearly state the show title.
+      Keep it confident, irreverent, and intellectually sharp.
+
+      ${externalPrompt ? `Additional instruction: ${externalPrompt}` : ''}
     `;
 
-    const messages = [
-      { role: 'system', content: basePrompt },
-      ...(userPrompt ? [{ role: 'user', content: userPrompt }] : [])
-    ];
-
+    // Call OpenAI
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages,
-      temperature: 0.75
+      temperature: 0.75,
+      messages: [
+        { role: 'system', content: systemPrompt }
+      ]
     });
 
-    res.json({ intro: completion.choices[0].message.content });
+    const introText = completion.choices[0].message.content.trim();
+    res.json({ intro: introText });
+
   } catch (error) {
-    console.error(error);
+    console.error('Error generating intro:', error);
     res.status(500).json({ error: 'Failed to generate intro' });
   }
 });
