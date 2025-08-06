@@ -1,6 +1,6 @@
 import express from 'express';
 import Parser from 'rss-parser';
-import { openai } from '../services/openai.js';
+import { openai } from '../utils/openai.js';
 import { sanitizeText } from '../utils/sanitize.js';
 import { storeSection } from '../utils/memoryCache.js';
 
