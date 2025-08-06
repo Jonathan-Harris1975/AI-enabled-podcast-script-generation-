@@ -1,0 +1,60 @@
+stages:
+  - install
+  - test
+  - build
+  - deploy
+
+variables:
+  NODE_ENV: test
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
+install:
+  stage: install
+  image: node:20
+  script:
+    - npm ci
+  artifacts:
+    paths:
+      - node_modules/
+    expire_in: 1h
+
+test:
+  stage: test
+  image: node:20
+  script:
+    - npm test
+  artifacts:
+    reports:
+      junit: junit.xml
+    expire_in: 1 week
+
+build:
+  stage: build
+  image: docker:25
+  services:
+    - docker:25-dind
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+  script:
+    - docker build -t $DOCKER_IMAGE .
+    - docker push $DOCKER_IMAGE
+  artifacts:
+    expire_in: 1 week
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "Deploying Docker image..."
+    # Example deployment step
+    # - ssh user@server "docker pull $DOCKER_IMAGE && docker run -d -p 3000:3000 $DOCKER_IMAGE"
+  only:
+    - main
+  environment:
+    name: production
+    url: https://your-production-url.com
