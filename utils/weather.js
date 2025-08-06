@@ -1,17 +1,30 @@
+// utils/weather.js
 import fetch from 'node-fetch';
 
-export async function getWeatherSummary(dateStr) {
+const getWeatherSummary = async (date) => {
   try {
-    const response = await fetch(`https://api.weatherapi.com/v1/history.json?key=${process.env.WEATHER_API_KEY}&q=London&dt=${dateStr}`);
-    if (!response.ok) throw new Error(`Weather API error: ${response.status}`);
+    // Replace with your actual weather API endpoint & key
+    const apiKey = process.env.WEATHER_API_KEY;
+    const location = 'London,UK';
+    const response = await fetch(
+      `https://api.weatherapi.com/v1/history.json?key=${apiKey}&q=${location}&dt=${date}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Weather API error: ${response.statusText}`);
+    }
+
     const data = await response.json();
 
-    const forecast = data.forecast?.forecastday?.[0]?.day;
-    if (!forecast) return 'Weather data unavailable.';
+    // Build a simple summary
+    const condition = data.forecast.forecastday[0].day.condition.text;
+    const temp = data.forecast.forecastday[0].day.avgtemp_c;
 
-    return `Weather in London on ${dateStr}: ${forecast.condition.text}, avg temp ${forecast.avgtemp_c}°C.`;
-  } catch (err) {
-    console.error('Weather fetch failed:', err.message);
-    return 'Weather data unavailable.';
+    return `Weather in ${location} on ${date}: ${condition}, around ${temp}°C.`;
+  } catch (error) {
+    console.error('Error fetching weather:', error);
+    return 'Unable to fetch weather data right now.';
   }
-}
+};
+
+export default getWeatherSummary;
