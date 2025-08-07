@@ -1,21 +1,19 @@
-export default function chunkText(text, maxLength = 4500) {
+export default function chunkText(text, maxChars = 4500) {
+  const paragraphs = text.split(/\n{2,}/);
   const chunks = [];
+
   let current = '';
 
-  const sentences = text.split(/(?<=[.!?])\s+/);
-
-  for (const sentence of sentences) {
-    if ((current + sentence).length > maxLength) {
+  for (const para of paragraphs) {
+    if ((current + '\n\n' + para).length > maxChars) {
       chunks.push(current.trim());
-      current = sentence;
+      current = para;
     } else {
-      current += ' ' + sentence;
+      current += '\n\n' + para;
     }
   }
 
-  if (current) {
-    chunks.push(current.trim());
-  }
+  if (current) chunks.push(current.trim());
 
   return chunks;
 }
