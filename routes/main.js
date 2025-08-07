@@ -1,6 +1,6 @@
 import express from 'express';
 import { openai } from '../utils/openai.js';
-import fetchFeeds from '../utils/fetchFeeds.js';
+import fetchFeed from '../utils/fetchFeed.js';
 import getWeatherSummary from '../utils/weather.js';
 
 const router = express.Router();
