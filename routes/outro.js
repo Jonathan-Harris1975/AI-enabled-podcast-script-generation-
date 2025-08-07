@@ -1,7 +1,6 @@
 import express from 'express';
 import { openai } from '../utils/openai.js';
 import getRandomSponsor from '../utils/getRandomSponsor.js';
-import generateCTA from '../utils/generateCTA.js';
 
 const router = express.Router();
 
@@ -13,17 +12,18 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    const sponsor = getRandomSponsor(); // e.g. "The Alignment Problem"
-    const cta = generateCTA(sponsor);   // returns full SSML string with call to action
+    const sponsor = getRandomSponsor(); // { title, url }
 
     const prompt = `
 You're the British Gen X host of an AI podcast called "Turing's Torch: AI Weekly".
-Generate a witty, engaging podcast outro using the ebook title: "${sponsor}".
-Use SSML with natural pacing and dry humour. End with this CTA:
+Generate a witty, engaging outro that wraps up the episode naturally.
 
-${cta}
+End with a persuasive call to action to promote this ebook:
+Title: "${sponsor.title}"
+Link: ${sponsor.url}
 
-Wrap the output in <speak> tags. Output one JSON-safe line under 4500 chars.
+Speak in a conversational tone with dry humour. Wrap the output in <speak> tags.
+Ensure the final output is one escaped, JSON-safe line under 4500 characters.
     `.trim();
 
     const completion = await openai.chat.completions.create({
