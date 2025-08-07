@@ -1,4 +1,4 @@
-// routes/main.js import express from 'express'; import { openai } from '../utils/openai.js'; import fetchFeeds from '../utils/fetchFeeds.js'; import { saveToMemory } from '../utils/memoryCache.js';
+// routes/main.js import express from 'express'; import { openai } from '../utils/openai.js'; import fetchFeeds from '../utils/fetchFeeds.js'; import { saveToMemory } from '../utils/memoryCache.js'; import fs from 'fs'; import path from 'path';
 
 const router = express.Router();
 
@@ -8,6 +8,10 @@ if (!rssFeedUrl || !sessionId) {
   return res.status(400).json({ error: 'Missing required fields' });
 }
 
+// Ensure 'storage' folder exists
+const storagePath = path.resolve('storage', sessionId);
+fs.mkdirSync(storagePath, { recursive: true });
+
 const articles = await fetchFeeds(rssFeedUrl);
 const articleTextArray = articles.map(
   (a, i) => `${i + 1}. ${a.title} - ${a.summary}`
@@ -15,7 +19,9 @@ const articleTextArray = articles.map(
 
 const inputPrompt = `Rewrite each AI news summary as a standalone podcast segment.
 
-Tone: intelligent, sarcastic British Gen X — dry wit, cultural commentary, and confident delivery. For each article:
+Tone: intelligent, sarcastic British Gen X — dry wit, cultural commentary, and confident delivery.
+
+For each article:
 
 Start with a dry joke or clever one-liner
 
