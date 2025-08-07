@@ -1,61 +1,41 @@
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
+// routes/outro.js
 
-import { openai } from '../utils/openai.js';
-import getRandomSponsor from '../utils/getRandomSponsor.js';
-import generateCTA from '../utils/generateCTA.js';
+import express from 'express'; import fs from 'fs'; import path from 'path'; import { openai } from '../utils/openai.js'; import getRandomSponsor from '../utils/getRandomSponsor.js'; import generateCTA from '../utils/generateCTA.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-  try {
-    const { sessionId } = req.body;
+router.post('/', async (req, res) => { try { const { sessionId } = req.body; if (!sessionId) { return res.status(400).json({ error: 'Missing sessionId' }); }
 
-    if (!sessionId) {
-      return res.status(400).json({ error: 'Missing sessionId' });
-    }
+const sponsor = getRandomSponsor();
+const cta = generateCTA(sponsor);
 
-    // Get sponsor + CTA
-    const sponsor = getRandomSponsor(); // e.g. { title, url }
-    const cta = generateCTA(sponsor);   // plain text CTA
+const prompt = `
 
-    const prompt = `
-You're a dry-witted British Gen X podcast host wrapping up an episode of "Turing's Torch: AI Weekly".
-Your audience is smart, curious, and likely mildly caffeinated.
-You're signing off solo — no team, no "we".
-The sponsor is titled "${sponsor.title}" and is available at: ${sponsor.url}
+You're the dry-witted solo host of the podcast "Turing's Torch: AI Weekly". You're British, Gen X, no fluff, and you're closing out the episode. You're signing off solo — no team, no "we". Say "I" or "me". Never refer to Jonathan Harris in the third person — it's you. The book is your ebook, you wrote it. Avoid referring to yourself in third person. End the episode naturally, with a strong but conversational CTA that encourages listeners to visit the main site for your ebook collection and to sign up for your newsletter.
 
-Write a short, original outro that:
-- Feels conversational and human
-- Embeds the sponsor title and URL naturally
-- Ends with the CTA: "${cta}"
-- NO bullet points, NO SSML, NO markdown — just raw text
-- Keep it punchy and under 600 words
-    `.trim();
+The featured ebook this week is called "${sponsor.title}" — the URL is ${sponsor.url}.
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: prompt }]
-    });
+Keep it tight, witty, and human. No bullet points, no markdown, no SSML. Here's the call to action for the book: ${cta}
 
-    const outro = completion.choices[0].message.content.trim();
+Now generate a closing script in that tone.`.trim();
 
-    // Save to session folder
-    const storagePath = path.resolve('storage', sessionId);
-    if (!fs.existsSync(storagePath)) {
-      fs.mkdirSync(storagePath, { recursive: true });
-    }
-
-    fs.writeFileSync(path.join(storagePath, 'outro.txt'), outro);
-
-    res.json({ sessionId, sponsor, outro });
-
-  } catch (err) {
-    console.error('❌ Outro generation failed:', err);
-    res.status(500).json({ error: 'Outro generation error' });
-  }
+const completion = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages: [{ role: 'user', content: prompt }],
+  temperature: 0.8,
 });
 
+const outro = completion.choices[0].message.content.trim();
+
+const storageDir = path.resolve('storage', sessionId);
+if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+
+const outroPath = path.join(storageDir, 'outro.txt');
+fs.writeFileSync(outroPath, outro);
+
+res.json({ outro });
+
+} catch (err) { console.error('❌ Outro generation failed:', err); res.status(500).json({ error: 'Failed to generate outro' }); } });
+
 export default router;
+
