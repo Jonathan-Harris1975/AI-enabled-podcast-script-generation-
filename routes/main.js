@@ -1,77 +1,34 @@
-import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
-import fetchFeed from '../utils/fetchFeed.js';
-import { openai } from '../utils/openai.js';
+// routes/main3.js — PODCAST MAIN GENERATOR ONLY
+
+import express from 'express'; import fetchFeeds from '../utils/fetchFeeds.js'; import getWeatherSummary from '../utils/weather.js'; import { openai } from '../utils/openai.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    if (!sessionId) throw new Error('No sessionId provided');
+router.post('/', async (req, res) => { try { console.log('🧠 Generating podcast main content...');
 
-    console.log('🧠 Generating structured podcast main content...');
-    const articles = await fetchFeed();
-    if (!Array.isArray(articles) || articles.length === 0) {
-      throw new Error('No valid articles were fetched.');
-    }
+const articles = await fetchFeeds();
+const weather = await getWeatherSummary();
 
-    const storySummary = articles.map((article, i) =>
-      `${i + 1}. ${article.title}\n\n${article.summary}\n`).join('\n');
+const articleText = articles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary}`).join('\n');
 
-    const prompt = `
-You're the sarcastic British Gen X host of the AI podcast 'Turing's Torch'.
+const systemPrompt = `
 
-Using the article list below, produce structured plain-text outputs in valid JSON format with the following fields:
+You're the host of a weekly podcast called 'Turing's Torch'. Tone: British Gen X, witty, sarcastic, intelligent. Today's weather: ${weather} Here are this week's top stories: ${articleText}
 
-{
-  "transcript": "",
-  "title": "",
-  "description": "",
-  "keywords": [],
-  "artPrompt": ""
-}
+Weave these into a single, cohesive main script. Prioritise storytelling and cultural commentary. Avoid listing headlines. Make it sound like a polished monologue. Include natural transitions, pacing, and a confident voice.`;
 
-Rules:
-- Transcript must be long-form, flowing, and witty.
-- No SSML, no HTML — plain text only.
-- Description must be two natural paragraphs.
-- Keywords must be lowercase, no duplicates.
-- ArtPrompt should describe an AI-themed podcast poster with London imagery.
-
-Articles:
-${storySummary}
-    `;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    const response = completion.choices[0]?.message?.content?.trim();
-    if (!response) throw new Error('OpenAI returned empty response.');
-
-    const match = response.match(/\{[\s\S]*?\}/);
-    if (!match) throw new Error('No valid JSON object found in OpenAI response.');
-    const json = JSON.parse(match[0]);
-
-    const dir = path.join('storage', sessionId);
-    await fs.mkdir(dir, { recursive: true });
-
-    await fs.writeFile(path.join(dir, 'main.txt'), json.transcript?.trim() || '', 'utf8');
-    await fs.writeFile(path.join(dir, 'title.txt'), json.title?.trim() || '', 'utf8');
-    await fs.writeFile(path.join(dir, 'description.txt'), json.description?.trim() || '', 'utf8');
-    await fs.writeFile(path.join(dir, 'keywords.txt'), (json.keywords || []).join(', '), 'utf8');
-    await fs.writeFile(path.join(dir, 'artPrompt.txt'), json.artPrompt?.trim() || '', 'utf8');
-
-    res.status(200).json(json);
-
-  } catch (err) {
-    console.error('❌ Main route error:', err.message);
-    res.status(500).json({ error: 'Podcast generation failed.', details: err.message });
-  }
+const completion = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  temperature: 0.76,
+  messages: [
+    { role: 'system', content: systemPrompt }
+  ]
 });
 
+const transcript = completion.choices[0].message.content.trim();
+res.status(200).json({ transcript });
+
+} catch (err) { console.error('❌ Main route error:', err.message); res.status(500).json({ error: 'Podcast generation failed' }); } });
+
 export default router;
+
