@@ -31,9 +31,9 @@ router.post('/', async (req, res) => {
     const formattedOutro = await editAndFormat(rawOutro);
     const finalOutro = formattedOutro.replace(/\n+/g, ' ');
 
-    const storageDir = path.resolve('storage', sessionId);
-    fs.mkdirSync(storageDir, { recursive: true });
-    fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
+    const storageDir = path.resolve('/mnt/data', sessionId);
+fs.mkdirSync(storageDir, { recursive: true });
+fs.writeFileSync(path.join(storageDir, 'intro.txt'), intro); // or outro.txt
 
     res.json({
       sessionId,
