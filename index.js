@@ -18,12 +18,12 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // Routes
-app.use('/', healthRoute);
-app.use('/', introRoute);
-app.use('/', mainRoute);
-app.use('/', outroRoute);
-app.use('/', composeRoute);
-app.use('/', clearSessionRoute);
+app.use('/health', healthRoute);
+app.use('/intro', introRoute);
+app.use('/main', mainRoute);
+app.use('/outro', outroRoute);
+app.use('/compose', composeRoute);
+app.use('/clearsession', clearSessionRoute);
 
 // 404 handler
 app.use((req, res) => {
@@ -36,7 +36,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
