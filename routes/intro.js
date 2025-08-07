@@ -1,43 +1,25 @@
-// routes/intro.js
-import express from 'express';
-import { openai } from '../utils/openai.js';
-import getWeatherSummary from '../utils/weather.js';
-import getRandomQuote from '../utils/quotes.js';
+// ✅ INTRO ROUTE (FULLY UPDATED)
+
+import express from 'express'; import getWeatherSummary from '../utils/weather.js'; import getTuringQuote from '../utils/getTuringQuote.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-  try {
-    const { date } = req.body;
+router.get('/', async (req, res) => { try { console.log('🌤️ Generating intro...');
 
-    const weather = await getWeatherSummary(date);
-    const quote = getRandomQuote();
+const weather = await getWeatherSummary();
+const quote = getTuringQuote();
 
-    const systemPrompt = `
-You're Jonathan Harris, host of the podcast "Turing's Torch: AI Weekly".
-Welcome listeners in a conversational, thoughtful tone.
-Mention the current weather: ${weather}.
-Share this AI-related quote from Alan Turing: "${quote}".
-Introduce the podcast and today's theme or highlight.
-    `.trim();
+const intro = `
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [
-        { role: 'system', content: systemPrompt }
-      ]
-    });
+Hello, dear listeners, and welcome to another episode of "Turing's Torch: AI Weekly." I'm your host, Jonathan Harris — broadcasting direct from London, where the weather today is ${weather.toLowerCase()} — which, let’s be honest, is just Britain's way of saying, “try again tomorrow.”
 
-    const message = completion.choices?.[0]?.message?.content?.trim();
+Before we dive headfirst into this week’s digital chaos, here’s a bit of wisdom from Alan Turing: "${quote}"
 
-    if (!message) throw new Error('No response from OpenAI');
+So grab a strong cuppa, slap your neural nets into gear, and let’s get sarcastic about silicon. `;
 
-    res.status(200).json({ message });
-  } catch (error) {
-    console.error('Intro generation error:', error.message);
-    res.status(500).json({ error: 'Failed to generate intro' });
-  }
-});
+res.status(200).json({ intro });
+
+} catch (err) { console.error('❌ Intro route error:', err.message); res.status(500).json({ error: 'Failed to generate intro.' }); } });
 
 export default router;
+
