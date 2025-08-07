@@ -10,7 +10,7 @@ import path from 'path';
  */
 export default function loadFromStorage(sessionId, key) {
   try {
-    const filePath = path.resolve('storage', sessionId, `${key}.txt`);
+    const filePath = path.resolve('/mnt/data', sessionId, `${key}.txt`);
     if (fs.existsSync(filePath)) {
       return fs.readFileSync(filePath, 'utf8');
     }
