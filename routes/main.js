@@ -7,67 +7,51 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    console.log('🌍 Starting main podcast script generation...');
+    console.log('🌍 Generating podcast output...');
 
-    const { prompt } = req.body;
-
-    // 1. Fetch articles
-    console.log('📡 Fetching feed...');
     const articles = await fetchFeed();
-    console.log('✅ Fetched articles:', Array.isArray(articles) ? articles.length : 'Invalid');
-
     if (!Array.isArray(articles) || articles.length === 0) {
       throw new Error('No valid articles were fetched from feed.');
     }
 
-    // 2. Build summary from articles
-    const articleSummary = articles.map((article, i) =>
-      `${i + 1}. ${article.title} - ${article.summary}`
-    ).join('\n');
+    const articleSummary = articles.map((article, i) => {
+      return `${i + 1}. ${article.title} - ${article.summary}`;
+    }).join('\n');
 
-    // 3. Get weather
-    const weather = getWeatherSummary();
-    console.log('🌦️ Weather summary:', weather);
+    const weather = await getWeatherSummary();
 
-    // 4. Construct full prompt
-    const systemPrompt = `
-You are the host of a weekly British podcast called "Turing's Torch". 
-Tone: sarcastic British Gen X, intelligent, culturally self-aware. 
-Your job is to deliver a confident, witty, and informative commentary.
+    const prompt = `
+You are the sarcastic British Gen X host of the AI podcast 'Turing's Torch' — your name is Jonathan Harris.
+Your task is to generate the following outputs based on the articles and weather:
 
-Start the podcast by saying: 
-"I’m your host, Jonathan Harris. And this is Turing’s Torch — your weekly update on the rise (or fall) of <say-as interpret-as="characters">A I</say-as>."
+1. A plain text podcast transcript (no SSML).
+2. The same transcript split into 4500-character TTS chunks.
+3. A title for the episode.
+4. A 2-paragraph episode description.
+5. 5–10 SEO keywords.
+6. A Midjourney-style artwork prompt for an AI-themed podcast poster referencing London.
 
-Today’s tech weather: ${weather}
+Always include clever weather-related commentary specific to London. Be dry, witty, culturally aware, and confident.
 
-Here are this week’s top <say-as interpret-as="characters">A I</say-as> stories:
+Today’s London weather: ${weather}
+
+Articles:
 ${articleSummary}
-
-Now turn these into a cohesive, insightful podcast script — in your voice.
-Use dry humour, punchy delivery, and smart transitions.
 `;
 
-    const fullPrompt = `${systemPrompt}\n\n${prompt || ''}`;
-
-    // 5. Generate response from OpenAI
-    console.log('🧠 Sending to OpenAI...');
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
       temperature: 0.75,
-      messages: [{ role: 'user', content: fullPrompt }],
+      messages: [{ role: 'user', content: prompt }],
     });
 
-    const message = completion.choices[0]?.message?.content?.trim();
-    if (!message) {
-      throw new Error('OpenAI response was empty or invalid.');
-    }
+    const response = completion.choices[0]?.message?.content?.trim();
+    if (!response) throw new Error('OpenAI returned empty response.');
 
-    console.log('✅ OpenAI response generated.');
-    res.status(200).json({ script: message });
-
+    res.status(200).json({ result: response });
   } catch (err) {
-    console.error('❌ Error in /main:', err.message || err);
-    res.status(500).json({ error: 'Failed to process feed or generate podcast script.' });
+    console.error('❌ Main route error:', err.message);
+    res.status(500).json({ error: 'Podcast generation failed.' });
   }
 });
 
