@@ -2,46 +2,55 @@
 import express from 'express';
 import { openai } from '../utils/openai.js';
 import { saveToMemory } from '../utils/memoryCache.js';
+import { formatPrompt } from '../utils/promptFormatter.js';
 
 const router = express.Router();
 
+/**
+ * Generates plain-text outro chunks and saves them
+ * Input: { sessionId: 'TT-2025-08-07' }
+ */
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, ebookTitle, ebookUrl } = req.body;
-    if (!sessionId || !ebookTitle || !ebookUrl) {
-      throw new Error('Missing required fields');
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const prompt = `
-You're the sarcastic British Gen X host of the AI podcast "Turing's Torch", Jonathan Harris.
+    console.log('🎤 Generating plain-text outro...');
 
-Generate a closing outro for an AI podcast episode. Plug the featured ebook of the week naturally.
-
-Ebook Title: ${ebookTitle}
-Ebook Link: ${ebookUrl}
-
-Style: dry wit, confident delivery, and no SSML. Must include:
-- A friendly goodbye
-- A reminder to follow/subscribe
-- Mention the ebook title + link
-- Do NOT reference episode numbers
-`;
+    const prompt = formatPrompt({
+      type: 'outro',
+      date: new Date().toISOString().split('T')[0]
+    });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
-      temperature: 0.75,
+      temperature: 0.7,
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const outro = completion.choices[0]?.message?.content?.trim();
-    if (!outro) throw new Error('Outro generation failed');
+    const message = completion.choices[0].message.content.trim();
 
-    saveToMemory(sessionId, 'outro', outro);
-    res.status(200).json({ outro });
+    // Break into chunks (simulate ~4800 char limit)
+    const maxLength = 4800;
+    const chunks = [];
+    for (let i = 0; i < message.length; i += maxLength) {
+      chunks.push(message.slice(i, i + maxLength).replace(/\n/g, ' ').trim());
+    }
 
+    await saveToMemory(`${sessionId}/outro-tts.json`, JSON.stringify(chunks));
+    await saveToMemory(`${sessionId}/outro.txt`, message);
+
+    res.json({
+      sessionId,
+      outroPath: `${sessionId}/outro.txt`,
+      ttsChunksPath: `${sessionId}/outro-tts.json`
+    });
   } catch (err) {
-    console.error('❌ Outro route error:', err.message);
-    res.status(500).json({ error: 'Outro generation failed.' });
+    console.error('❌ Outro route error:', err);
+    res.status(500).json({ error: 'Failed to generate outro' });
   }
 });
 
