@@ -8,6 +8,6 @@ const turingQuotes = [
 ];
 
 export default function getTuringQuote() {
-  const randomIndex = Math.floor(Math.random() * turingQuotes.length);
-  return turingQuotes[randomIndex];
+  const i = Math.floor(Math.random() * turingQuotes.length);
+  return turingQuotes[i];
 }
