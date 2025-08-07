@@ -1,4 +1,4 @@
-# Stage 1: Build and install dependencies
+# Stage 1: Build
 FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
@@ -8,17 +8,19 @@ RUN npm ci
 
 COPY . .
 
-# Stage 2: Production image
+# Stage 2: Runtime
 FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# Copy only the necessary parts
+COPY --from=builder /usr/src/app /usr/src/app
 
-COPY --from=builder /usr/src/app/utils ./utils
-COPY --from=builder /usr/src/app/routes ./routes
-COPY --from=builder /usr/src/app/app.js ./app.js
+# Ensure the storage directory exists
+RUN mkdir -p storage
 
+# Expose port
 EXPOSE 3000
-CMD ["node", "app.js"]
+
+# Start the server
+CMD ["node", "index.js"]
