@@ -1,44 +1,42 @@
+// utils/fetchFeeds.js
 import Parser from 'rss-parser';
 
 const parser = new Parser();
 
-/**
- * Fetch and filter RSS feed articles
- * @param {string} url - RSS feed URL
- * @param {number} maxAgeDays - Max article age in days (default 7)
- * @returns {Promise<Array>} - Filtered articles
- */
-export default async function fetchFeed(url, maxAgeDays = 7) {
-  try {
-    const feed = await parser.parseURL(url);
+// List of AI-related RSS feeds
+const feedUrls = [
+  'https://www.technologyreview.com/feed/',
+  'https://spectrum.ieee.org/rss/fulltext',
+  'https://www.aitrends.com/feed/',
+  'https://feeds.arstechnica.com/arstechnica/technology-lab',
+  'https://venturebeat.com/category/ai/feed/'
+];
 
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - maxAgeDays);
+export default async function fetchFeeds({ maxAgeDays = 3, maxFeeds = 40 } = {}) {
+  const articles = [];
 
-    // Filter, deduplicate, and limit
-    const articles = feed.items
-      .filter(item => {
-        if (!item.pubDate) return false;
+  for (const url of feedUrls) {
+    try {
+      const feed = await parser.parseURL(url);
+
+      feed.items.forEach((item) => {
+        if (articles.length >= maxFeeds) return;
+
         const pubDate = new Date(item.pubDate);
-        return pubDate >= cutoff;
-      })
-      .reduce((unique, item) => {
-        if (!unique.some(existing => existing.link === item.link)) {
-          unique.push({
-            title: item.title || '',
-            link: item.link || '',
-            pubDate: item.pubDate || '',
-            contentSnippet: item.contentSnippet || '',
-            content: item.content || ''
+        const ageDays = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60 * 24);
+
+        if (ageDays <= maxAgeDays) {
+          articles.push({
+            title: item.title,
+            summary: item.contentSnippet || item.summary || '',
+            link: item.link
           });
         }
-        return unique;
-      }, [])
-      .slice(0, 40);
-
-    return articles;
-  } catch (err) {
-    console.error('Error fetching feed:', err);
-    return [];
+      });
+    } catch (err) {
+      console.warn(`Failed to fetch ${url}:`, err.message);
+    }
   }
-              }
+
+  return articles;
+}
