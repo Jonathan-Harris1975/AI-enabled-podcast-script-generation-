@@ -1,7 +1,9 @@
 // routes/intro.js
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import { openai } from '../utils/openai.js';
-import { saveToMemory, clearMemory } from '../utils/memoryCache.js';
+import { clearMemory } from '../utils/memoryCache.js';
 import { getIntroPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
@@ -27,13 +29,13 @@ router.post('/', async (req, res) => {
     });
 
     const intro = completion.choices[0].message.content.trim();
-    const filePath = `storage/${sessionId}/intro.txt`;
-
-    await saveToMemory(sessionId, 'intro', intro);
+    const storageDir = path.resolve('storage', sessionId);
+    fs.mkdirSync(storageDir, { recursive: true });
+    fs.writeFileSync(path.join(storageDir, 'intro.txt'), intro);
 
     res.json({
       sessionId,
-      introPath: filePath
+      introPath: `${storageDir}/intro.txt`
     });
   } catch (err) {
     console.error('❌ Intro route error:', err);
