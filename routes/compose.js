@@ -1,7 +1,10 @@
-// routes/compose.js import express from 'express'; import fs from 'fs'; import path from 'path';
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
 
-import scriptComposer from '../utils/scriptComposer.js'; import editAndFormat from '../utils/editAndFormat.js'; import chunkText from '../utils/chunkText.js';
-
+import { scriptComposer } from '../utils/scriptComposer.js';
+import { editAndFormat } from '../utils/editAndFormat.js';
+import { chunkText } from '../utils/chunkText.js';
 const router = express.Router();
 
 router.post('/', async (req, res) => { try { const { sessionId } = req.body; if (!sessionId) { return res.status(400).json({ error: 'Missing sessionId' }); }
