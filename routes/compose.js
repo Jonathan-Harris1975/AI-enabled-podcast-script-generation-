@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import podcastHelpers from 'utils/podcastHelpers.js':
+import podcastHelpers from '../utils/podcastHelpers.js';
 import editAndFormat from '../utils/editAndFormat.js';
 
 const router = express.Router();
