@@ -1,10 +1,10 @@
-// utils/chunkText.js
-
-export function chunkText(text = '', maxLength = 4500) {
+export default function chunkText(text, maxLength = 4500) {
   const chunks = [];
   let current = '';
 
-  for (const sentence of text.split(/(?<=[.?!])\s+/)) {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+
+  for (const sentence of sentences) {
     if ((current + sentence).length > maxLength) {
       chunks.push(current.trim());
       current = sentence;
@@ -13,7 +13,7 @@ export function chunkText(text = '', maxLength = 4500) {
     }
   }
 
-  if (current.trim()) {
+  if (current) {
     chunks.push(current.trim());
   }
 
