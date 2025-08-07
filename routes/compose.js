@@ -1,9 +1,11 @@
+// ✅ COMPOSE ROUTE — FINAL PAYLOAD GENERATION
+
 import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
 import { chunkText } from '../utils/chunkText.js';
-import { uploadToR2 } from '../utils/uploadToR2.js'; // ✅ Fixed import
+import { uploadToR2 } from '../utils/uploadToR2.js';
 
 const router = express.Router();
 
@@ -14,7 +16,7 @@ router.post('/', async (req, res) => {
 
     const storageDir = path.join('storage', sessionId);
 
-    // Read all input files
+    // Load all pieces
     const intro = await fs.readFile(path.join(storageDir, 'intro.txt'), 'utf8');
     const main = await fs.readFile(path.join(storageDir, 'main.txt'), 'utf8');
     const outroJson = JSON.parse(await fs.readFile(path.join(storageDir, 'outro.json'), 'utf8'));
@@ -26,27 +28,25 @@ ${main.trim()}
 ${Object.values(outroJson).join('\n\n')}`);
 
     const ttsChunks = chunkText(fullTranscript);
-
     const title = formatTitle(await fs.readFile(path.join(storageDir, 'title.txt'), 'utf8'));
     const description = (await fs.readFile(path.join(storageDir, 'description.txt'), 'utf8')).trim();
     const keywordsRaw = await fs.readFile(path.join(storageDir, 'keywords.txt'), 'utf8');
     const keywords = normaliseKeywords(keywordsRaw);
     const artPrompt = (await fs.readFile(path.join(storageDir, 'artPrompt.txt'), 'utf8')).trim();
 
-    const payload = {
+    // Upload transcript
+    const transcriptKey = `${sessionId}.txt`;
+    const url = await uploadToR2(transcriptKey, fullTranscript);
+
+    res.status(200).json({
+      url,
       transcript: fullTranscript,
       ttsChunks,
       title,
       description,
       keywords,
       artPrompt
-    };
-
-    // Upload transcript to R2
-    const transcriptKey = `${sessionId}.txt`;
-    const url = await uploadToR2(transcriptKey, fullTranscript); // ✅ Named export
-
-    res.status(200).json({ url, ...payload });
+    });
 
   } catch (err) {
     console.error('❌ Compose error:', err.message);
