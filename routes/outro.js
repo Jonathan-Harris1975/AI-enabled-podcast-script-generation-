@@ -10,23 +10,17 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-    if (!sessionId) {
-      return res.status(400).json({ error: 'Missing sessionId' });
-    }
-
-    const sponsor = getRandomSponsor(); // full { title, shortUrl }
-    const cta = generateCTA(sponsor);   // plain text CTA
+    const sponsor = getRandomSponsor(); // contains title + shortUrl
+    const cta = generateCTA(sponsor);
 
     const prompt = `
-You're the British Gen X host of a witty podcast called "Turing's Torch: AI Weekly".
-Craft a 1-paragraph casual outro with dry humour, mentioning the ebook title "${sponsor.title}".
-Include the following call to action at the end:
-
+You're the British Gen X host of an AI podcast called "Turing's Torch: AI Weekly".
+Generate a witty, engaging podcast outro using the ebook title: "${sponsor.title}".
+End with this CTA:
 ${cta}
-
-Use plain text only. No SSML. No markdown. No quotes or formatting.
-Tone: witty, sharp, slightly sarcastic. No cheesy sales talk. No over-explaining.
+Output plain text only, no SSML.
 `.trim();
 
     const completion = await openai.chat.completions.create({
@@ -37,10 +31,8 @@ Tone: witty, sharp, slightly sarcastic. No cheesy sales talk. No over-explaining
 
     const outro = completion.choices[0].message.content.trim();
 
-    // Save outro to /storage/sessionId/outro.txt
-    const storageDir = path.resolve('storage', sessionId);
-    fs.mkdirSync(storageDir, { recursive: true });
-    fs.writeFileSync(path.join(storageDir, 'outro.txt'), outro, 'utf-8');
+    const outputPath = path.resolve('sessions', `${sessionId}-outro.txt`);
+    fs.writeFileSync(outputPath, outro, 'utf-8');
 
     res.json({ sessionId, outro });
 
