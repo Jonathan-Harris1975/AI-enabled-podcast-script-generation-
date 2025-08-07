@@ -1,7 +1,6 @@
 import express from 'express';
 import fetchFeed from '../utils/fetchFeed.js';
 import { openai } from '../utils/openai.js';
-import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
 
 const router = express.Router();
 
@@ -21,7 +20,7 @@ router.post('/', async (req, res) => {
     const prompt = `
 You're the sarcastic British Gen X host of the AI podcast 'Turing's Torch'.
 
-Using the article list below, produce structured plain-text outputs in valid JSON format with the following fields:
+Using the article list below, produce structured plain-text outputs in **valid JSON format** with the following fields:
 
 {
   "transcript": "",
@@ -40,7 +39,7 @@ Rules:
 
 Articles:
 ${storySummary}
-`;
+    `;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
@@ -51,19 +50,25 @@ ${storySummary}
     const response = completion.choices[0]?.message?.content?.trim();
     if (!response) throw new Error('OpenAI returned an empty response.');
 
-    const parsed = JSON.parse(response);
+    // Extract only the first valid JSON block (in case of trailing text)
+    const match = response.match(/\{[\s\S]*?\}/);
+    if (!match) throw new Error('No valid JSON object found in OpenAI response.');
+
+    const json = JSON.parse(match[0]);
 
     res.status(200).json({
-      transcript: cleanTranscript(parsed.transcript),
-      title: formatTitle(parsed.title),
-      description: parsed.description?.trim() || '',
-      keywords: normaliseKeywords(parsed.keywords),
-      artPrompt: parsed.artPrompt?.trim() || ''
+      transcript: json.transcript?.trim() || '',
+      title: json.title?.trim() || '',
+      description: json.description?.trim() || '',
+      keywords: Array.isArray(json.keywords)
+        ? [...new Set(json.keywords.map(k => k.toLowerCase().trim()))]
+        : [],
+      artPrompt: json.artPrompt?.trim() || ''
     });
 
   } catch (err) {
     console.error('❌ Main route error:', err.message);
-    res.status(500).json({ error: 'Podcast generation failed.' });
+    res.status(500).json({ error: 'Podcast generation failed.', details: err.message });
   }
 });
 
