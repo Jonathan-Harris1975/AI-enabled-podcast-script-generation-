@@ -1,52 +1,50 @@
+// routes/compose.js
 import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
-import { openai } from '../utils/openai.js';
+import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
+import { chunkText } from '../utils/chunkText.js';
+import uploadToR2 from '../utils/uploadToR2.js';
+import { getFromMemory, saveToMemory } from '../utils/memoryCache.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId } = req.body;
-    if (!sessionId) throw new Error('No sessionId provided');
+    const { sessionId, title, description, keywords, artPrompt } = req.body;
+    if (!sessionId || !title || !description || !keywords || !artPrompt) {
+      throw new Error('Missing required compose fields');
+    }
 
-    const prompt = `
-You're the sarcastic British Gen X host of 'Turing's Torch'.
+    const intro = getFromMemory(sessionId, 'intro');
+    const main = getFromMemory(sessionId, 'main');
 
-Write four short outro segments for a podcast as **individual plain-text fields** in JSON format:
+    if (!intro || !main) throw new Error('Intro or main missing from memory');
 
-{
-  "sponsorBlurb": "",
-  "reminder": "",
-  "finalMessage": "",
-  "signOff": ""
-}
+    const transcript = cleanTranscript(`${intro}\n\n${main}`);
+    const ttsChunks = chunkText(transcript);
 
-Keep tone humorous and blunt. No SSML, no HTML. No AI mentions.
-    `.trim();
+    saveToMemory(sessionId, 'transcript', transcript);
+    saveToMemory(sessionId, 'ttsChunks', ttsChunks);
+    saveToMemory(sessionId, 'title', title);
+    saveToMemory(sessionId, 'description', description);
+    saveToMemory(sessionId, 'keywords', normaliseKeywords(keywords));
+    saveToMemory(sessionId, 'artPrompt', artPrompt);
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: prompt }]
+    const transcriptKey = `${sessionId}.txt`;
+    const url = await uploadToR2(transcriptKey, transcript);
+
+    res.status(200).json({
+      url,
+      transcript,
+      ttsChunks,
+      title: formatTitle(title),
+      description,
+      keywords: normaliseKeywords(keywords),
+      artPrompt
     });
 
-    const raw = completion.choices[0]?.message?.content?.trim();
-    if (!raw) throw new Error('No response from OpenAI.');
-
-    const match = raw.match(/\{[\s\S]*?\}/);
-    if (!match) throw new Error('No JSON block found.');
-    const outro = JSON.parse(match[0]);
-
-    const dir = path.join('storage', sessionId);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, 'outro.json'), JSON.stringify(outro, null, 2), 'utf8');
-
-    res.status(200).json(outro);
-
   } catch (err) {
-    console.error('❌ Outro route error:', err.message);
-    res.status(500).json({ error: 'Failed to generate outro.', details: err.message });
+    console.error('❌ Compose error:', err.message);
+    res.status(500).json({ error: 'Failed to generate full podcast output.' });
   }
 });
 
