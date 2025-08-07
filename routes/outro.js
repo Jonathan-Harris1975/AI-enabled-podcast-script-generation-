@@ -10,31 +10,49 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
-    if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-    const sponsor = getRandomSponsor(); // contains title + shortUrl
-    const cta = generateCTA(sponsor);
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
+    }
+
+    // Pick a random book and get its CTA line
+    const sponsor = getRandomSponsor(); // e.g. { title: "20", url: "https://..." }
+    const cta = generateCTA(sponsor);   // e.g. "You can find it at https://..."
 
     const prompt = `
 You're the British Gen X host of an AI podcast called "Turing's Torch: AI Weekly".
-Generate a witty, engaging podcast outro using the ebook title: "${sponsor.title}".
-End with this CTA:
-${cta}
-Output plain text only, no SSML.
-`.trim();
+Write a short, dry-witted outro that wraps up the episode and promotes this ebook:
+
+Title: "${sponsor.title}"
+URL: ${sponsor.url}
+
+Include the call to action below as the final paragraph:
+"${cta}"
+
+Use dry humour, plain UK English, and no SSML or voice instructions.
+The output should be plain text and under 1000 words.
+    `.trim();
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
-      temperature: 0.7,
+      temperature: 0.75,
       messages: [{ role: 'user', content: prompt }]
     });
 
     const outro = completion.choices[0].message.content.trim();
 
-    const outputPath = path.resolve('sessions', `${sessionId}-outro.txt`);
+    // Ensure sessions folder exists
+    const sessionsDir = path.resolve('sessions');
+    if (!fs.existsSync(sessionsDir)) {
+      fs.mkdirSync(sessionsDir);
+    }
+
+    // Save the outro to a file
+    const outputPath = path.join(sessionsDir, `${sessionId}-outro.txt`);
     fs.writeFileSync(outputPath, outro, 'utf-8');
 
-    res.json({ sessionId, outro });
+    // Return JSON response
+    res.json({ sessionId, sponsor, outro });
 
   } catch (err) {
     console.error('❌ Outro generation failed:', err.message);
