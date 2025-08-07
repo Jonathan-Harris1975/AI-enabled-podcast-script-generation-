@@ -1,5 +1,5 @@
-import chunkText from './chunkText.js';
-import editAndFormat from './editAndFormat.js';
+import { chunkText } from './chunkText.js';
+import { editAndFormat } from './editAndFormat.js';
 
 export function composeScript(intro, chunks, outro) {
   const fullScript = [intro, ...chunks, outro].join('\n\n');
