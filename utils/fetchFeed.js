@@ -1,40 +1,30 @@
-// utils/fetchFeeds.js
 import Parser from 'rss-parser';
 
 const parser = new Parser();
+const FEED_URL = 'https://rss-newsletter.onrender.com/feed.xml';
 
-// List of AI-related RSS feeds
-const feedUrls = [
-  'https://www.technologyreview.com/feed/',
-  'https://spectrum.ieee.org/rss/fulltext',
-  'https://www.aitrends.com/feed/',
-  'https://feeds.arstechnica.com/arstechnica/technology-lab',
-  'https://venturebeat.com/category/ai/feed/'
-];
+export default async function fetchFeed() {
+  try {
+    console.log('🌐 Fetching RSS feed:', FEED_URL);
+    const feed = await parser.parseURL(FEED_URL);
 
-export default async function fetchFeeds({ maxAgeDays = 3, maxFeeds = 40 } = {}) {
-  const articles = [];
+    if (!feed || !feed.items || feed.items.length === 0) {
+      console.warn('⚠️ RSS feed returned no items.');
+      return [];
+    }
 
-  for (const url of feedUrls) {
-    try {
-      const feed = await parser.parseURL(url);
+    const articles = feed.items.slice(0, 5).map(item => ({
+      title: item.title?.trim() || 'Untitled',
+      summary: item.contentSnippet?.trim() || item.content?.trim() || 'No summary available.'
+    }));
 
-      feed.items.forEach((item) => {
-        if (articles.length >= maxFeeds) return;
-
-        const pubDate = new Date(item.pubDate);
-        const ageDays = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60 * 24);
-
-        if (ageDays <= maxAgeDays) {
-          articles.push({
-            title: item.title,
-            summary: item.contentSnippet || item.summary || '',
-            link: item.link
-          });
-        }
-      });
-    } catch (err) {
-      console.warn(`Failed to fetch ${url}:`, err.message);
+    console.log(`✅ Parsed ${articles.length} articles.`);
+    return articles;
+  } catch (err) {
+    console.error('❌ Error fetching or parsing RSS feed:', err.message || err);
+    return [];
+  }
+}      console.warn(`Failed to fetch ${url}:`, err.message);
     }
   }
 
