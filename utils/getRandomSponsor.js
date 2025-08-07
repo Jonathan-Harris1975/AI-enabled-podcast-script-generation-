@@ -7,7 +7,5 @@ export default function getRandomSponsor() {
   const books = JSON.parse(rawData);
 
   const i = Math.floor(Math.random() * books.length);
-  const { title, shortUrl } = books[i];
-
-  return { title, shortUrl };
+  return books[i]; // Includes both title and shortUrl
 }
