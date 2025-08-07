@@ -33,7 +33,7 @@ router.post('/', async (req, res) => {
 
     const storageDir = path.resolve('/mnt/data', sessionId);
 fs.mkdirSync(storageDir, { recursive: true });
-fs.writeFileSync(path.join(storageDir, 'outro.txt), intro); // or outro.txt
+fs.writeFileSync(path.join(storageDir, 'outro.txt), outro);
 
     res.json({
       sessionId,
