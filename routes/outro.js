@@ -32,16 +32,4 @@ End with a signature farewell and reminder to tune in next week.
   }
 });
 
-export default router;      messages: [
-        { role: 'system', content: systemPrompt }
-      ]
-    });
-
-    res.json({ outro: completion.choices[0].message.content });
-  } catch (error) {
-    console.error('Error generating outro:', error);
-    res.status(500).json({ error: 'Failed to generate outro' });
-  }
-});
-
 export default router;
