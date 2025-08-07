@@ -1,40 +1,48 @@
+// routes/main.js
 import express from 'express';
-import Parser from 'rss-parser';
 import { openai } from '../utils/openai.js';
+import fetchFeeds from '../utils/fetchFeeds.js';
 
 const router = express.Router();
-const parser = new Parser();
 
 router.post('/', async (req, res) => {
   try {
-    const { feedUrls, daysLimit, prompt } = req.body;
+    const { sessionId, maxAgeDays = 3, maxFeeds = 40 } = req.body;
 
-    const articles = [];
-    const now = new Date();
+    const articles = await fetchFeeds({ maxAgeDays, maxFeeds });
 
-    for (const url of feedUrls) {
-      const feed = await parser.parseURL(url);
-      for (const item of feed.items) {
-        const pubDate = new Date(item.pubDate);
-        const ageInDays = (now - pubDate) / (1000 * 60 * 60 * 24);
-        if (ageInDays <= daysLimit) {
-          articles.push({
-            title: item.title,
-            link: item.link,
-            summary: item.contentSnippet
-          });
-        }
-      }
+    if (!articles.length) {
+      return res.status(500).json({ error: 'No articles found for processing' });
     }
 
-    const limitedArticles = articles.slice(0, 40);
+    const summaries = articles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary || a.description || ''}`).join('\n\n');
 
     const systemPrompt = `
-You are Jonathan Harris, the host of "Turing's Torch: AI Weekly".
-Analyze and summarize the following AI news articles in a Gen X style — intelligent, concise, irreverent when warranted.
-Include headlines and brief context.
-`;
+You're Jonathan Harris, host of the podcast "Turing's Torch: AI Weekly".
+Summarize the top AI news stories below into a cohesive segment.
+Make it informative, a bit witty, and easy to follow.
+News:\n${summaries}
+    `.trim();
 
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      temperature: 0.75,
+      messages: [
+        { role: 'system', content: systemPrompt }
+      ]
+    });
+
+    const message = completion.choices?.[0]?.message?.content?.trim();
+    if (!message) throw new Error('No response from OpenAI');
+
+    res.status(200).json({ message });
+  } catch (error) {
+    console.error('Main generation error:', error.message);
+    res.status(500).json({ error: 'Failed to process feed' });
+  }
+});
+
+export default router;
     const articleText = limitedArticles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary}`).join('\n\n');
     const fullPrompt = `${systemPrompt}\n\nArticles:\n${articleText}\n\n${prompt || ''}`;
 
