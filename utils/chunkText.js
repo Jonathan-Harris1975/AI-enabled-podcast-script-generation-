@@ -1,18 +1,18 @@
-// utils/chunkText.js
-
-export function chunkText(text, maxLength = 4500) {
+export default function chunkText(text, maxLength = 4500) {
   const chunks = [];
   let currentChunk = '';
 
   for (const paragraph of text.split('\n\n')) {
-    if ((currentChunk + '\n\n' + paragraph).length > maxLength) {
+    if ((currentChunk + paragraph).length > maxLength) {
       chunks.push(currentChunk.trim());
-      currentChunk = paragraph;
-    } else {
-      currentChunk += '\n\n' + paragraph;
+      currentChunk = '';
     }
+    currentChunk += paragraph + '\n\n';
   }
 
-  if (currentChunk.trim()) chunks.push(currentChunk.trim());
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+
   return chunks;
 }
