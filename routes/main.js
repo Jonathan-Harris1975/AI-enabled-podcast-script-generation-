@@ -1,34 +1,49 @@
-// routes/main3.js — PODCAST MAIN GENERATOR ONLY
-
-import express from 'express'; import fetchFeeds from '../utils/fetchFeeds.js'; import getWeatherSummary from '../utils/weather.js'; import { openai } from '../utils/openai.js';
+// routes/main.js
+import express from 'express';
+import fetchFeed from '../utils/fetchFeed.js';
+import { openai } from '../utils/openai.js';
+import { saveToMemory } from '../utils/memoryCache.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => { try { console.log('🧠 Generating podcast main content...');
+router.post('/', async (req, res) => {
+  try {
+    console.log('🧠 Generating podcast main content...');
+    const { sessionId } = req.body;
+    if (!sessionId) throw new Error('Missing sessionId');
 
-const articles = await fetchFeeds();
-const weather = await getWeatherSummary();
+    const articles = await fetchFeed();
+    if (!articles.length) throw new Error('No valid articles fetched');
 
-const articleText = articles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary}`).join('\n');
+    const articleSummary = articles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary}`).join('\n');
 
-const systemPrompt = `
+    const prompt = `
+You're the sarcastic British Gen X host of the AI podcast 'Turing's Torch'.
 
-You're the host of a weekly podcast called 'Turing's Torch'. Tone: British Gen X, witty, sarcastic, intelligent. Today's weather: ${weather} Here are this week's top stories: ${articleText}
+Using the articles below, generate a witty and intelligent long-form monologue as if delivering the main segment of an AI podcast.
 
-Weave these into a single, cohesive main script. Prioritise storytelling and cultural commentary. Avoid listing headlines. Make it sound like a polished monologue. Include natural transitions, pacing, and a confident voice.`;
+Articles:
+${articleSummary}
 
-const completion = await openai.chat.completions.create({
-  model: 'gpt-4o',
-  temperature: 0.76,
-  messages: [
-    { role: 'system', content: systemPrompt }
-  ]
+No SSML or HTML, plain text only.
+Don't mention article count or numbers.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      temperature: 0.8,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const main = completion.choices[0]?.message?.content?.trim();
+    if (!main) throw new Error('Main content generation failed');
+
+    saveToMemory(sessionId, 'main', main);
+    res.status(200).json({ main });
+
+  } catch (err) {
+    console.error('❌ Main route error:', err.message);
+    res.status(500).json({ error: 'Podcast main generation failed.' });
+  }
 });
 
-const transcript = completion.choices[0].message.content.trim();
-res.status(200).json({ transcript });
-
-} catch (err) { console.error('❌ Main route error:', err.message); res.status(500).json({ error: 'Podcast generation failed' }); } });
-
 export default router;
-
