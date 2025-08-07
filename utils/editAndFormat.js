@@ -1,3 +1,9 @@
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
 export default async function editAndFormat(scriptText) {
   const instructions = `
 You are a skilled podcast editor. Polish this AI-generated script for natural British Gen X delivery:
@@ -7,14 +13,17 @@ You are a skilled podcast editor. Polish this AI-generated script for natural Br
 - Output plain clean text only — no markup
 `.trim();
 
-  const result = await openai.chat.completions.create({
-    model: 'gpt-4',
-    temperature: 0.7,
-    messages: [
-      { role: 'system', content: instructions },
-      { role: 'user', content: scriptText }
-    ]
-  });
+  try {
+    const result = await openai.chat.completions.create({
+      model: 'gpt-4',
+      temperature: 0.7,
+      messages: [
+        { role: 'system', content: instructions },
+        { role: 'user', content: scriptText }
+      ],
+      max_tokens: 2000
+    });
 
-  return result.choices[0].message.content.trim();
-}
+    return result.choices[0].message.content.trim();
+  } catch (error) {
+    console.error('❌ editAnd
