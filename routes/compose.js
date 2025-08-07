@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
 import { chunkText } from '../utils/chunkText.js';
-import uploadToR2 from '../utils/uploadToR2.js';
+import { uploadToR2 } from '../utils/uploadToR2.js'; // ✅ Fixed import
 
 const router = express.Router();
 
@@ -44,7 +44,7 @@ ${Object.values(outroJson).join('\n\n')}`);
 
     // Upload transcript to R2
     const transcriptKey = `${sessionId}.txt`;
-    const url = await uploadToR2(transcriptKey, fullTranscript);
+    const url = await uploadToR2(transcriptKey, fullTranscript); // ✅ Named export
 
     res.status(200).json({ url, ...payload });
 
