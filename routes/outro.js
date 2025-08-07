@@ -5,6 +5,7 @@ import { openai } from '../utils/openai.js';
 import getSponsor from '../utils/getSponsor.js';
 import generateCta from '../utils/generateCta.js';
 import editAndFormat from '../utils/editAndFormat.js';
+import { saveToMemory } from '../utils/memoryCache.js'; // ✅ added
 
 const router = express.Router();
 
@@ -27,12 +28,14 @@ router.post('/', async (req, res) => {
     });
 
     const rawOutro = completion.choices[0].message.content.trim();
-    const formattedOutro = await editAndFormat(rawOutro); // ✅ await fix
-    const finalOutro = formattedOutro.replace(/\n+/g, ' '); // ✅ flatten it
+    const formattedOutro = await editAndFormat(rawOutro);
+    const finalOutro = formattedOutro.replace(/\n+/g, ' ');
 
     const storageDir = path.resolve('storage', sessionId);
     fs.mkdirSync(storageDir, { recursive: true });
     fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
+
+    await saveToMemory(sessionId, 'outro', finalOutro); // ✅ added memory caching
 
     res.json({ outro: finalOutro });
   } catch (err) {
