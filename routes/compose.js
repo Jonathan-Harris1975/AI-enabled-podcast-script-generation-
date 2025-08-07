@@ -1,50 +1,44 @@
-// ✅ COMPOSE ROUTE — FINAL PAYLOAD GENERATION
-
+// routes/compose.js
 import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
 import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
 import { chunkText } from '../utils/chunkText.js';
-import { uploadToR2 } from '../utils/uploadToR2.js';
+import uploadToR2 from '../utils/uploadToR2.js';
+import { getFromMemory, saveToMemory } from '../utils/memoryCache.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId } = req.body;
-    if (!sessionId) throw new Error('No sessionId provided');
+    const { sessionId, title, description, keywords, artPrompt } = req.body;
+    if (!sessionId || !title || !description || !keywords || !artPrompt) {
+      throw new Error('Missing required compose fields');
+    }
 
-    const storageDir = path.join('storage', sessionId);
+    const intro = getFromMemory(sessionId, 'intro');
+    const main = getFromMemory(sessionId, 'main');
 
-    // Load all pieces
-    const intro = await fs.readFile(path.join(storageDir, 'intro.txt'), 'utf8');
-    const main = await fs.readFile(path.join(storageDir, 'main.txt'), 'utf8');
-    const outroJson = JSON.parse(await fs.readFile(path.join(storageDir, 'outro.json'), 'utf8'));
+    if (!intro || !main) throw new Error('Intro or main missing from memory');
 
-    const fullTranscript = cleanTranscript(`${intro.trim()}
+    const transcript = cleanTranscript(`${intro}\n\n${main}`);
+    const ttsChunks = chunkText(transcript);
 
-${main.trim()}
+    saveToMemory(sessionId, 'transcript', transcript);
+    saveToMemory(sessionId, 'ttsChunks', ttsChunks);
+    saveToMemory(sessionId, 'title', title);
+    saveToMemory(sessionId, 'description', description);
+    saveToMemory(sessionId, 'keywords', normaliseKeywords(keywords));
+    saveToMemory(sessionId, 'artPrompt', artPrompt);
 
-${Object.values(outroJson).join('\n\n')}`);
-
-    const ttsChunks = chunkText(fullTranscript);
-    const title = formatTitle(await fs.readFile(path.join(storageDir, 'title.txt'), 'utf8'));
-    const description = (await fs.readFile(path.join(storageDir, 'description.txt'), 'utf8')).trim();
-    const keywordsRaw = await fs.readFile(path.join(storageDir, 'keywords.txt'), 'utf8');
-    const keywords = normaliseKeywords(keywordsRaw);
-    const artPrompt = (await fs.readFile(path.join(storageDir, 'artPrompt.txt'), 'utf8')).trim();
-
-    // Upload transcript
     const transcriptKey = `${sessionId}.txt`;
-    const url = await uploadToR2(transcriptKey, fullTranscript);
+    const url = await uploadToR2(transcriptKey, transcript);
 
     res.status(200).json({
       url,
-      transcript: fullTranscript,
+      transcript,
       ttsChunks,
-      title,
+      title: formatTitle(title),
       description,
-      keywords,
+      keywords: normaliseKeywords(keywords),
       artPrompt
     });
 
