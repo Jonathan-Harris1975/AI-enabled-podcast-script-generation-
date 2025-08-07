@@ -1,6 +1,7 @@
 import express from 'express';
 import fetchFeed from '../utils/fetchFeed.js';
 import { openai } from '../utils/openai.js';
+import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
 
 const router = express.Router();
 
@@ -50,14 +51,14 @@ ${storySummary}
     const response = completion.choices[0]?.message?.content?.trim();
     if (!response) throw new Error('OpenAI returned an empty response.');
 
-    const json = JSON.parse(response);
+    const parsed = JSON.parse(response);
 
     res.status(200).json({
-      transcript: json.transcript?.trim() || '',
-      title: json.title?.trim() || '',
-      description: json.description?.trim() || '',
-      keywords: Array.isArray(json.keywords) ? json.keywords.map(k => k.toLowerCase()) : [],
-      artPrompt: json.artPrompt?.trim() || ''
+      transcript: cleanTranscript(parsed.transcript),
+      title: formatTitle(parsed.title),
+      description: parsed.description?.trim() || '',
+      keywords: normaliseKeywords(parsed.keywords),
+      artPrompt: parsed.artPrompt?.trim() || ''
     });
 
   } catch (err) {
