@@ -2,9 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 
-import scriptComposer from '../utils/scriptComposer.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import chunkText from '../utils/chunkText.js';
 
 const router = express.Router();
 
@@ -23,26 +21,29 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Intro or outro not found' });
     }
 
-    const intro = fs.readFileSync(introPath, 'utf-8');
-    const outro = fs.readFileSync(outroPath, 'utf-8');
+    const intro = fs.readFileSync(introPath, 'utf-8').trim();
+    const outro = fs.readFileSync(outroPath, 'utf-8').trim();
 
     const mainChunks = fs
       .readdirSync(storageDir)
-      .filter(f => f.startsWith('tts-chunk-'))
+      .filter(f => f.startsWith('raw-chunk-'))
       .sort()
-      .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8'));
+      .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8').trim());
 
-    // Final cleaned and chunked script
-    const composed = scriptComposer(intro, mainChunks, outro);
+    // Clean and flatten all chunks
+    const cleanedChunks = [intro, ...mainChunks, outro].map(chunk =>
+      editAndFormat(chunk).replace(/\n+/g, ' ')
+    );
 
-    const outputPath = path.join(storageDir, 'final-script.txt');
-    fs.writeFileSync(outputPath, composed);
+    // Save final array of chunks to file
+    const outputPath = path.join(storageDir, 'final-chunks.json');
+    fs.writeFileSync(outputPath, JSON.stringify(cleanedChunks, null, 2));
 
-    res.json({ sessionId, outputPath });
+    res.json({ sessionId, chunks: cleanedChunks });
 
   } catch (err) {
     console.error('❌ Compose error:', err);
-    res.status(500).json({ error: 'Failed to compose final script' });
+    res.status(500).json({ error: 'Failed to compose final chunks' });
   }
 });
 
