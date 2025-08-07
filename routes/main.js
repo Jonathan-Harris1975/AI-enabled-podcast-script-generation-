@@ -1,4 +1,6 @@
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import fetchFeed from '../utils/fetchFeed.js';
 import { openai } from '../utils/openai.js';
 
@@ -6,21 +8,22 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    console.log('🧠 Generating structured podcast main content...');
+    const { sessionId } = req.body;
+    if (!sessionId) throw new Error('No sessionId provided');
 
+    console.log('🧠 Generating structured podcast main content...');
     const articles = await fetchFeed();
     if (!Array.isArray(articles) || articles.length === 0) {
-      throw new Error('No valid articles were fetched from feed.');
+      throw new Error('No valid articles were fetched.');
     }
 
-    const storySummary = articles.map((article, i) => {
-      return `${i + 1}. ${article.title}\n\n${article.summary}\n`;
-    }).join('\n');
+    const storySummary = articles.map((article, i) =>
+      `${i + 1}. ${article.title}\n\n${article.summary}\n`).join('\n');
 
     const prompt = `
 You're the sarcastic British Gen X host of the AI podcast 'Turing's Torch'.
 
-Using the article list below, produce structured plain-text outputs in **valid JSON format** with the following fields:
+Using the article list below, produce structured plain-text outputs in valid JSON format with the following fields:
 
 {
   "transcript": "",
@@ -48,23 +51,22 @@ ${storySummary}
     });
 
     const response = completion.choices[0]?.message?.content?.trim();
-    if (!response) throw new Error('OpenAI returned an empty response.');
+    if (!response) throw new Error('OpenAI returned empty response.');
 
-    // Extract only the first valid JSON block (in case of trailing text)
     const match = response.match(/\{[\s\S]*?\}/);
     if (!match) throw new Error('No valid JSON object found in OpenAI response.');
-
     const json = JSON.parse(match[0]);
 
-    res.status(200).json({
-      transcript: json.transcript?.trim() || '',
-      title: json.title?.trim() || '',
-      description: json.description?.trim() || '',
-      keywords: Array.isArray(json.keywords)
-        ? [...new Set(json.keywords.map(k => k.toLowerCase().trim()))]
-        : [],
-      artPrompt: json.artPrompt?.trim() || ''
-    });
+    const dir = path.join('storage', sessionId);
+    await fs.mkdir(dir, { recursive: true });
+
+    await fs.writeFile(path.join(dir, 'main.txt'), json.transcript?.trim() || '', 'utf8');
+    await fs.writeFile(path.join(dir, 'title.txt'), json.title?.trim() || '', 'utf8');
+    await fs.writeFile(path.join(dir, 'description.txt'), json.description?.trim() || '', 'utf8');
+    await fs.writeFile(path.join(dir, 'keywords.txt'), (json.keywords || []).join(', '), 'utf8');
+    await fs.writeFile(path.join(dir, 'artPrompt.txt'), json.artPrompt?.trim() || '', 'utf8');
+
+    res.status(200).json(json);
 
   } catch (err) {
     console.error('❌ Main route error:', err.message);
