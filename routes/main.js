@@ -1,44 +1,53 @@
 import express from 'express';
 import Parser from 'rss-parser';
-import OpenAI from '../utils/openai.js';
+import { openai } from '../utils/openai.js';
 
 const router = express.Router();
 const parser = new Parser();
 
 router.post('/', async (req, res) => {
   try {
-    const { feedUrl, maxDays = 7, maxArticles = 40, prompt: externalPrompt } = req.body;
+    const { feedUrls, daysLimit, prompt } = req.body;
 
-    const feed = await parser.parseURL(feedUrl);
+    const articles = [];
+    const now = new Date();
 
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - maxDays);
-
-    const articles = feed.items
-      .filter(item => new Date(item.pubDate) >= cutoffDate)
-      .slice(0, maxArticles);
-
-    let systemPrompt = `
-      Summarise the following ${articles.length} AI-related articles in a sharp, witty, British Gen X style.  
-      Avoid corporate jargon, add cultural references where appropriate.  
-    `;
-
-    if (externalPrompt) {
-      systemPrompt += `\n\nAdditional context from user: ${externalPrompt}`;
+    for (const url of feedUrls) {
+      const feed = await parser.parseURL(url);
+      for (const item of feed.items) {
+        const pubDate = new Date(item.pubDate);
+        const ageInDays = (now - pubDate) / (1000 * 60 * 60 * 24);
+        if (ageInDays <= daysLimit) {
+          articles.push({
+            title: item.title,
+            link: item.link,
+            summary: item.contentSnippet
+          });
+        }
+      }
     }
 
-    const response = await OpenAI.chat.completions.create({
-      model: 'gpt-4o-mini',
+    const limitedArticles = articles.slice(0, 40);
+
+    const systemPrompt = `
+You are Jonathan Harris, the host of "Turing's Torch: AI Weekly".
+Analyze and summarize the following AI news articles in a Gen X style — intelligent, concise, irreverent when warranted.
+Include headlines and brief context.
+`;
+
+    const articleText = limitedArticles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary}`).join('\n\n');
+    const fullPrompt = `${systemPrompt}\n\nArticles:\n${articleText}\n\n${prompt || ''}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
       temperature: 0.75,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: JSON.stringify(articles) }
-      ],
+      messages: [{ role: 'user', content: fullPrompt }]
     });
 
-    res.json({ summary: response.choices[0].message.content });
+    const message = completion.choices[0].message.content.trim();
+    res.status(200).json({ message });
   } catch (error) {
-    console.error('Error processing feed:', error);
+    console.error('Main segment error:', error);
     res.status(500).json({ error: 'Failed to process feed' });
   }
 });
