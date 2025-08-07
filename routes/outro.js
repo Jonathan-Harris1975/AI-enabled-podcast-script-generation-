@@ -1,3 +1,4 @@
+// routes/outro.js
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -5,7 +6,6 @@ import { openai } from '../utils/openai.js';
 import getSponsor from '../utils/getSponsor.js';
 import generateCta from '../utils/generateCta.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import { saveToMemory } from '../utils/memoryCache.js'; // ✅ added
 
 const router = express.Router();
 
@@ -35,9 +35,10 @@ router.post('/', async (req, res) => {
     fs.mkdirSync(storageDir, { recursive: true });
     fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
 
-    await saveToMemory(sessionId, 'outro', finalOutro); // ✅ added memory caching
-
-    res.json({ outro: finalOutro });
+    res.json({
+      sessionId,
+      outroPath: `${storageDir}/outro.txt`
+    });
   } catch (err) {
     console.error('❌ Outro generation failed:', err);
     res.status(500).json({ error: 'Failed to generate outro' });
