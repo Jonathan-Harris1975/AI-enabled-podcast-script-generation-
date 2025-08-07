@@ -31,8 +31,12 @@ router.post('/', async (req, res) => {
       .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8').trim());
 
     // Clean and flatten all chunks
-    const cleanedChunks = [intro, ...mainChunks, outro].map(chunk =>
-      editAndFormat(chunk).replace(/\n+/g, ' ')
+    const cleanedChunks = await Promise.all(
+  [intro, ...mainChunks, outro].map(async chunk => {
+    const edited = await editAndFormat(chunk);
+    return edited.replace(/\n+/g, ' ');
+  })
+);
     );
 
     // 🔀 Random tone selection
