@@ -35,11 +35,21 @@ router.post('/', async (req, res) => {
       editAndFormat(chunk).replace(/\n+/g, ' ')
     );
 
-    // Save final array of chunks to file
-    const outputPath = path.join(storageDir, 'final-chunks.json');
-    fs.writeFileSync(outputPath, JSON.stringify(cleanedChunks, null, 2));
+    // 🔀 Random tone selection
+    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'oddly poetic'];
+    const tone = tones[Math.floor(Math.random() * tones.length)];
+    console.log(`🎙️ Selected tone: ${tone}`);
 
-    res.json({ sessionId, chunks: cleanedChunks });
+    // Save final array of chunks + tone to file
+    const output = {
+      tone,
+      chunks: cleanedChunks
+    };
+
+    const outputPath = path.join(storageDir, 'final-chunks.json');
+    fs.writeFileSync(outputPath, JSON.stringify(output, null, 2));
+
+    res.json({ sessionId, ...output });
 
   } catch (err) {
     console.error('❌ Compose error:', err);
