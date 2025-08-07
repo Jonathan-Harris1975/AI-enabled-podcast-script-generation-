@@ -1,28 +1,8 @@
-// utils/editAndFormat.js
-
-export function cleanTranscript(text = '') {
+export default function editAndFormat(text) {
   return text
-    .replace(/\s+/g, ' ')
-    .replace(/\.\s+\./g, '.')
-    .replace(/["“”]/g, '')
+    .replace(/\s{2,}/g, ' ')        // collapse extra spaces
+    .replace(/([.!?])(?=[^\s])/g, '$1 ') // ensure space after punctuation
+    .replace(/“|”/g, '"')           // replace smart quotes with straight quotes
+    .replace(/‘|’/g, "'")           // replace smart apostrophes
     .trim();
-}
-
-export function formatTitle(title = '') {
-  return title
-    .replace(/\s+/g, ' ')
-    .replace(/^"|"$/g, '')
-    .replace(/\.\.+$/, '.')
-    .trim();
-}
-
-export function normaliseKeywords(keywords = []) {
-  const seen = new Set();
-  return keywords
-    .map(k => k.toLowerCase().trim())
-    .filter(k => {
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
 }
