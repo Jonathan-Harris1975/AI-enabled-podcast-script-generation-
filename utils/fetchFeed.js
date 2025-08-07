@@ -20,13 +20,9 @@ export default async function fetchFeed() {
 
     console.log(`✅ Parsed ${articles.length} articles.`);
     return articles;
+
   } catch (err) {
     console.error('❌ Error fetching or parsing RSS feed:', err.message || err);
     return [];
   }
-}      console.warn(`Failed to fetch ${url}:`, err.message);
-    }
-  }
-
-  return articles;
 }
