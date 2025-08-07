@@ -1,34 +1,19 @@
-const memory = new Map();
+// utils/memoryCache.js
+const memoryStore = {};
 
-/**
- * Save data to in-memory store.
- * @param {string} key - Unique key (e.g., 'intro', 'main', 'sessionId-001')
- * @param {*} value - Any serialisable content
- */
-export function saveToMemory(key, value) {
-  memory.set(key, value);
+export function saveToMemory(sessionId, key, value) {
+  if (!memoryStore[sessionId]) {
+    memoryStore[sessionId] = {};
+  }
+  memoryStore[sessionId][key] = value;
 }
 
-/**
- * Get data from in-memory store.
- * @param {string} key - Key to retrieve
- * @returns {*} Stored value or undefined
- */
-export function getFromMemory(key) {
-  return memory.get(key);
+export function getFromMemory(sessionId, key) {
+  return memoryStore[sessionId]?.[key];
 }
 
-/**
- * Delete a key from memory store.
- * @param {string} key - Key to delete
- */
-export function clearFromMemory(key) {
-  memory.delete(key);
-}
-
-/**
- * Clear all temporary memory — for debugging or reset.
- */
-export function clearAllMemory() {
-  memory.clear();
+export function clearMemory(sessionId) {
+  if (memoryStore[sessionId]) {
+    delete memoryStore[sessionId];
+  }
 }
