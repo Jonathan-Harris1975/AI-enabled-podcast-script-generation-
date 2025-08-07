@@ -41,17 +41,4 @@ Wrap the output in <speak> tags. Output one JSON-safe line under 4500 chars.
   }
 });
 
-export default router;    fs.writeFileSync(filePath, outroText, 'utf8');
-
-    res.json({
-      sessionId,
-      outroPath: `storage/${sessionId}/outro.txt`
-    });
-
-  } catch (err) {
-    console.error('❌ Outro route error:', err);
-    res.status(500).json({ error: 'Outro generation failed' });
-  }
-});
-
 export default router;
