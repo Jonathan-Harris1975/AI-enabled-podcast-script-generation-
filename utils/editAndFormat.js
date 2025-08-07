@@ -1,10 +1,12 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = new OpenAI(); // relies on process.env.OPENAI_API_KEY
 
 export default async function editAndFormat(scriptText) {
+  if (typeof scriptText !== 'string' || !scriptText.trim()) {
+    throw new Error('Invalid or empty scriptText');
+  }
+
   const instructions = `
 You are a skilled podcast editor. Polish this AI-generated script for natural British Gen X delivery:
 - Maintain sarcastic, witty tone
