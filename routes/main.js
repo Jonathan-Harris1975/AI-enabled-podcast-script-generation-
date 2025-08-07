@@ -4,7 +4,7 @@ import express from 'express';
 import fetchFeed from '../utils/fetchFeed.js';
 import { openai } from '../utils/openai.js';
 import { cleanTranscript, chunkText, normaliseKeywords, formatTitle } from '../utils/editAndFormat.js';
-
+import { chunkText } from '../utils/chunkText.js';
 const router = express.Router();
 
 router.post('/', async (req, res) => {
