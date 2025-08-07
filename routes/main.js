@@ -45,7 +45,7 @@ Here are the stories: ${articleTextArray.join('\n')}`;
       .filter(Boolean)
       .map(chunk => chunk.trim());
 
-    const chunkPaths = chunks.map((_, i) => `storage/${sessionId}/raw-chunk-${i + 1}.txt`);
+    const chunkPaths = chunks.map((_, i) => `/mnt/data/${sessionId}/raw-chunk-${i + 1}.txt`);
     await saveToMemory(sessionId, 'mainChunks', chunks);
 
     res.json({
