@@ -1,42 +1,60 @@
-
 import express from 'express';
-import { openai } from '../utils/openai.js';
+import fs from 'fs/promises';
+import path from 'path';
+import chunkText from '../utils/chunkText.js';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import r2Client from '../utils/r2Client.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { intro, main, outro } = req.body;
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-    const fullScript = `
-${intro}
+    const basePath = path.resolve(`./storage/${sessionId}`);
+    const read = async (file) => {
+      const fullPath = path.join(basePath, file);
+      return (await fs.readFile(fullPath, 'utf8')).trim();
+    };
 
----
+    const [intro, main, outro, title, description, keywordsRaw, artPrompt] = await Promise.all([
+      read('intro.txt'),
+      read('main.txt'),
+      read('outro.txt'),
+      read('title.txt'),
+      read('description.txt'),
+      read('keywords.txt'),
+      read('artPrompt.txt')
+    ]);
 
-${main}
+    const transcript = `${intro}\n\n${main}\n\n${outro}`;
+    const ttsChunks = chunkText(transcript);
+    const keywords = keywordsRaw.split(',').map(k => k.trim()).filter(Boolean);
 
----
+    // Upload transcript to R2
+    const objectKey = `${sessionId}.txt`;
+    await r2Client.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET,
+      Key: objectKey,
+      Body: transcript,
+      ContentType: 'text/plain'
+    }));
 
-${outro}
-`;
+    const transcriptUrl = `${process.env.R2_PUBLIC_BASE_URL}/${process.env.R2_BUCKET}/${objectKey}`;
 
-    const systemPrompt = `
-You are a podcast editor for "Turing's Torch: AI Weekly".
-Merge the intro, main segment, and outro into a clean, broadcast-ready script in Gen X tone.
-Ensure smooth transitions and a consistent voice throughout.
-`;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: `${systemPrompt}\n\n${fullScript}` }]
+    res.status(200).json({
+      title,
+      description,
+      keywords,
+      artPrompt,
+      transcriptUrl,
+      ttsChunks
     });
 
-    const message = completion.choices[0].message.content.trim();
-    res.status(200).json({ message });
-  } catch (error) {
-    console.error('Compose error:', error);
-    res.status(500).json({ error: 'Failed to compose full script' });
+  } catch (err) {
+    console.error('❌ Compose session merge failed:', err.message);
+    res.status(500).json({ error: 'Failed to generate full podcast output.' });
   }
 });
 
