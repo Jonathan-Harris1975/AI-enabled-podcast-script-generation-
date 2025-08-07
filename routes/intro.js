@@ -1,41 +1,26 @@
-// ✅ /routes/intro.js — Generates the intro with baked-in host name + episode number
+// ✅ /routes/intro.js — FINAL
 
-import express from 'express'; import fs from 'fs/promises'; import path from 'path'; import { openai } from '../utils/openai.js';
+import express from 'express'; import { openai } from '../utils/openai.js'; import getWeatherSummary from '../utils/weather.js'; import getTuringQuote from '../utils/quote.js'; import getEpisodeNumber from '../utils/episodeNumber.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => { try { const { sessionId } = req.body; if (!sessionId) throw new Error('No sessionId provided');
-
-const storageDir = path.join('storage', sessionId);
-
-const episodeNumber = parseInt(await fs.readFile(path.join(storageDir, 'episode.txt'), 'utf8'));
-const weather = await fs.readFile(path.join(storageDir, 'weather.txt'), 'utf8');
-const quote = await fs.readFile(path.join(storageDir, 'quote.txt'), 'utf8');
+router.post('/', async (req, res) => { try { const weather = await getWeatherSummary(); const quote = await getTuringQuote(); const episode = await getEpisodeNumber();
 
 const prompt = `
 
-You're the sarcastic British Gen X host of the AI podcast 'Turing’s Torch: AI Weekly'.
-
-Write a dry, clever intro that includes:
-
-A witty British weather metaphor (from: ${weather})
-
-An Alan Turing quote (from: ${quote})
-
-A natural line: "I'm your host, Jonathan Harris."
-
-A mention that this is "Episode ${episodeNumber}"
-
-
-Tone: intelligent, funny, relaxed — like a Gen X radio presenter. Plain text only. Max 90 seconds spoken. `;
+Write a witty British Gen X podcast intro for 'Turing's Torch: AI Weekly'. Start with a snarky weather-related line, then introduce the host Jonathan Harris by name. Follow with a natural segue into this week's AI news and include the episode number: ${episode}. End with this quote from Alan Turing: "${quote}" — keep it dry, clever, and succinct. No SSML, no title, just the raw intro text. Today’s weather: ${weather}`;
 
 const completion = await openai.chat.completions.create({
   model: 'gpt-4',
-  temperature: 0.75,
+  temperature: 0.7,
   messages: [{ role: 'user', content: prompt }]
 });
 
 const intro = completion.choices[0]?.message?.content?.trim();
-if (!intro) throw new Error('No
+if (!intro) throw new Error('No intro generated');
 
-                            
+res.status(200).json({ episode, intro });
+
+} catch (err) { console.error('❌ Intro error:', err.message); res.status(500).json({ error
+
+                                                                                    
