@@ -1,13 +1,10 @@
+// routes/health.js
 import express from 'express';
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Health check passed' });
-});
-
-export default router;    res.status(500).json({ error: 'Failed to generate intro' });
-  }
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', message: 'Service is healthy.' });
 });
 
 export default router;
