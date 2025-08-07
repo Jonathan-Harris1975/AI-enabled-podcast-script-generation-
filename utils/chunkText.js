@@ -9,19 +9,15 @@ export default function chunkText(text, maxLength = 4500) {
       break;
     }
 
-    // Try to break at a sentence boundary
     let breakpoint = text.lastIndexOf('.', end);
     if (breakpoint === -1 || breakpoint <= start + 200) {
-      // If no suitable '.', try newline
       breakpoint = text.lastIndexOf('\n', end);
     }
     if (breakpoint === -1 || breakpoint <= start + 200) {
-      // Otherwise break at word
       breakpoint = text.lastIndexOf(' ', end);
     }
 
     if (breakpoint === -1 || breakpoint <= start) {
-      // Emergency: hard cut
       breakpoint = end;
     }
 
