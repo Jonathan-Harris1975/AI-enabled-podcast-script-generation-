@@ -1,20 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-
-let booksCache = null;
+import books from '../data/books.json' assert { type: 'json' };
 
 export default function getRandomSponsor() {
-  if (!booksCache) {
-    const booksPath = path.resolve('data', 'books.json');
-    const raw = fs.readFileSync(booksPath, 'utf-8');
-    booksCache = JSON.parse(raw);
-  }
-
-  const keys = Object.keys(booksCache);
-  const randomKey = keys[Math.floor(Math.random() * keys.length)];
-
-  return {
-    title: randomKey,
-    url: booksCache[randomKey]
-  };
+  const i = Math.floor(Math.random() * books.length);
+  const { title, shortUrl } = books[i];
+  return { title, shortUrl };
 }
