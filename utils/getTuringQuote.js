@@ -1,13 +1,18 @@
-const turingQuotes = [
-  "Sometimes it is the people no one can imagine anything of who do the things no one can imagine.",
-  "We can only see a short distance ahead, but we can see plenty there that needs to be done.",
-  "A computer would deserve to be called intelligent if it could deceive a human into believing that it was human.",
-  "Those who can imagine anything, can create the impossible.",
-  "Machines take me by surprise with great frequency.",
-  "I propose to consider the question, 'Can machines think?'"
-];
+import fs from 'fs';
+import path from 'path';
+
+let quotesCache = null;
 
 export default function getTuringQuote() {
-  const i = Math.floor(Math.random() * turingQuotes.length);
-  return turingQuotes[i];
+  if (!quotesCache) {
+    const quotesPath = path.resolve('utils', 'quotes.txt');
+    const raw = fs.readFileSync(quotesPath, 'utf-8');
+    quotesCache = raw
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+  }
+
+  const i = Math.floor(Math.random() * quotesCache.length);
+  return quotesCache[i];
 }
