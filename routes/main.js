@@ -1,23 +1,21 @@
-// /routes/main.js ✅ FINAL CLEAN VERSION
-
 import express from 'express';
 import fetchFeed from '../utils/fetchFeed.js';
 import { openai } from '../utils/openai.js';
-import { cleanTranscript, normaliseKeywords, formatTitle } from '../utils/editAndFormat.js';
-import { chunkText } from '../utils/chunkText.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    console.log('🧠 Generating main podcast body...');
+    console.log('🧠 Generating structured podcast main content...');
 
     const articles = await fetchFeed();
     if (!Array.isArray(articles) || articles.length === 0) {
-      throw new Error('No articles fetched.');
+      throw new Error('No valid articles were fetched from feed.');
     }
 
-    const articleSummary = articles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary}`).join('\n');
+    const storySummary = articles.map((article, i) => {
+      return `${i + 1}. ${article.title}\n\n${article.summary}\n`;
+    }).join('\n');
 
     const prompt = `
 You're the sarcastic British Gen X host of the AI podcast 'Turing's Torch'.
@@ -40,7 +38,7 @@ Rules:
 - ArtPrompt should describe an AI-themed podcast poster with London imagery.
 
 Articles:
-${articleSummary}
+${storySummary}
 `;
 
     const completion = await openai.chat.completions.create({
@@ -49,30 +47,22 @@ ${articleSummary}
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const raw = completion.choices[0]?.message?.content?.trim();
-    if (!raw) throw new Error('No response from OpenAI.');
+    const response = completion.choices[0]?.message?.content?.trim();
+    if (!response) throw new Error('OpenAI returned an empty response.');
 
-    const parsed = JSON.parse(raw);
-
-    const transcript = cleanTranscript(parsed.transcript);
-    const ttsChunks = chunkText(transcript);
-    const title = formatTitle(parsed.title);
-    const description = parsed.description?.trim() || '';
-    const keywords = normaliseKeywords(parsed.keywords);
-    const artPrompt = parsed.artPrompt?.trim() || '';
+    const json = JSON.parse(response);
 
     res.status(200).json({
-      transcript,
-      ttsChunks,
-      title,
-      description,
-      keywords,
-      artPrompt
+      transcript: json.transcript?.trim() || '',
+      title: json.title?.trim() || '',
+      description: json.description?.trim() || '',
+      keywords: Array.isArray(json.keywords) ? json.keywords.map(k => k.toLowerCase()) : [],
+      artPrompt: json.artPrompt?.trim() || ''
     });
 
   } catch (err) {
-    console.error('❌ Main error:', err.message);
-    res.status(500).json({ error: 'Failed to generate podcast body.' });
+    console.error('❌ Main route error:', err.message);
+    res.status(500).json({ error: 'Podcast generation failed.' });
   }
 });
 
