@@ -1,5 +1,5 @@
 // routes/outro.js import express from 'express'; import fs from 'fs'; import path from 'path';
-
+import express from 'express';
 import { openai } from '../utils/openai.js'; import getSponsor from '../utils/getSponsor.js'; import generateCta from '../utils/generateCta.js'; import editAndFormat from '../utils/editAndFormat.js';
 
 const router = express.Router();
