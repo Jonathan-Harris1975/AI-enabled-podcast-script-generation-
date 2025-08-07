@@ -1,48 +1,42 @@
 // utils/memoryCache.js
 
-const cache = {};
+const memoryStore = new Map();
 
 /**
- * Save content to memory cache under a session ID and file key.
- * @param {string} sessionId
- * @param {string} key - e.g. 'intro', 'main', 'outro'
- * @param {string} content
- */
-export function saveToMemory(sessionId, key, content) {
-  if (!cache[sessionId]) {
-    cache[sessionId] = {};
-  }
-  cache[sessionId][key] = content;
-}
-
-/**
- * Retrieve cached content by session ID and key.
+ * Save a value under a session and key
  * @param {string} sessionId
  * @param {string} key
- * @returns {string | undefined}
+ * @param {*} value
+ */
+export function saveToMemory(sessionId, key, value) {
+  if (!memoryStore.has(sessionId)) {
+    memoryStore.set(sessionId, {});
+  }
+  memoryStore.get(sessionId)[key] = value;
+}
+
+/**
+ * Retrieve a value from memory by session and key
+ * @param {string} sessionId
+ * @param {string} key
+ * @returns {*}
  */
 export function getFromMemory(sessionId, key) {
-  return cache[sessionId]?.[key];
+  return memoryStore.get(sessionId)?.[key];
 }
 
 /**
- * Get all content for a session (e.g. intro + main + outro).
+ * Flush memory for a session
  * @param {string} sessionId
- * @returns {object} session content
  */
-export function getSessionMemory(sessionId) {
-  return cache[sessionId] || {};
+export function flushSession(sessionId) {
+  memoryStore.delete(sessionId);
 }
 
 /**
- * Clear a session from cache.
- * @param {string} sessionId
+ * Dump entire memory (for debugging)
+ * @returns {Map}
  */
-export function clearMemory(sessionId) {
-  delete cache[sessionId];
-}      delete cache[sessionId];
-    }
-  }
+export function dumpMemory() {
+  return memoryStore;
 }
-
-export { storeSection, getSection, getAllSections, clearSession };
