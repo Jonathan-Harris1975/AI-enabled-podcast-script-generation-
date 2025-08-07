@@ -1,6 +1,6 @@
 // routes/main.js import express from 'express'; import { openai } from '../utils/openai.js'; import fetchFeeds from '../utils/fetchFeeds.js'; import { saveToMemory } from '../utils/memoryCache.js';
 
-const router = express.Router();
+import express from 'express';
 
 router.post('/', async (req, res) => { try { const { rssFeedUrl, sessionId } = req.body;
 
