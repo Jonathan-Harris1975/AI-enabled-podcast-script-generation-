@@ -1,4 +1,4 @@
-import express from 'express'; import { openai } from '../utils/openai.js'; import fetchFeeds from '../utils/fetchFeeds.js'; import { saveToMemory } from '../utils/memoryCache.js';
+// routes/main.js import express from 'express'; import { openai } from '../utils/openai.js'; import fetchFeeds from '../utils/fetchFeeds.js'; import { saveToMemory } from '../utils/memoryCache.js';
 
 const router = express.Router();
 
@@ -8,34 +8,37 @@ if (!rssFeedUrl || !sessionId) {
   return res.status(400).json({ error: 'Missing required fields' });
 }
 
-console.log('🧠 Generating podcast main content...');
-
 const articles = await fetchFeeds(rssFeedUrl);
+const articleTextArray = articles.map(
+  (a, i) => `${i + 1}. ${a.title} - ${a.summary}`
+);
 
-const formattedArticles = articles
-  .map((article, i) => `${i + 1}. ${article.title} - ${article.summary}`)
-  .join('\n');
+const inputPrompt = `Rewrite each AI news summary as a standalone podcast segment.
 
-const systemPrompt = `Rewrite each AI news summary as a standalone podcast segment. Tone: intelligent, sarcastic British Gen X. Dry wit, cultural commentary, and confident delivery. For each article: - Start with a dry joke or clever one-liner - Explain the topic clearly\n\n${formattedArticles}`;
+Tone: intelligent, sarcastic British Gen X — dry wit, cultural commentary, and confident delivery. For each article:
+
+Start with a dry joke or clever one-liner
+
+Explain the topic clearly
+
+Use natural phrasing
+
+Avoid repetition
+
+
+Here are the stories: ${articleTextArray.join('\n')}`;
 
 const completion = await openai.chat.completions.create({
   model: 'gpt-4',
   temperature: 0.75,
-  messages: [{ role: 'user', content: systemPrompt }]
+  messages: [
+    {
+      role: 'user',
+      content: inputPrompt
+    }
+  ]
 });
 
-const response = completion.choices[0].message.content.trim();
-const chunks = response
-  .split(/\n\n+/)
-  .map((chunk) => chunk.trim())
-  .filter(Boolean);
+const chunks = completion.choices[
 
-await saveToMemory(sessionId, 'main-tts', chunks);
-
-res.json({ chunks });
-
-} catch (error) { console.error('❌ Main route error:', error.message); res.status(500).json({ error: 'Podcast generation failed' }); } });
-
-export default router;
-
-                                      
+  
