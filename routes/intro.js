@@ -1,39 +1,33 @@
-// routes/intro.js
-import express from 'express';
-import { openai } from '../utils/openai.js';
-import { saveToMemory } from '../utils/memoryCache.js';
+// routes/intro.js import express from 'express'; import { openai } from '../utils/openai.js'; import getWeatherSummary from '../utils/weather.js'; import fetchQuotes from '../utils/fetchQuotes.js'; import { saveToMemory } from '../utils/memoryCache.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-  try {
-    const { weather, turingQuote, sessionId } = req.body;
-    if (!sessionId || !weather || !turingQuote) throw new Error('Missing required fields');
+router.post('/', async (req, res) => { try { const { sessionId, date, episode, reset } = req.body; if (!sessionId || !date || !episode) { return res.status(400).json({ error: 'Missing required fields' }); }
 
-    const prompt = `
-You're the host of the British podcast "Turing’s Torch: AI Weekly", voiced with a sarcastic British Gen X tone. Your name is Jonathan Harris. Begin the episode with a weather-related opener, then deliver this Alan Turing quote with gravitas.
+const weather = await getWeatherSummary();
+const quote = await fetchQuotes();
 
-Weather: ${weather}
-Quote: ${turingQuote}
+const systemPrompt = `You're Jonathan Harris, host of Turing’s Torch: AI Weekly. Use a dry, British Gen X tone. Open with a sharp weather jab, blend in the week's tone, and wrap with an Alan Turing quote.`;
+const userPrompt = `Today’s weather summary: ${weather}
 
-Add personality and flair, bake in your name as host, and make it engaging without saying the episode number. Return plain text, no SSML.`;
+Alan Turing quote: ${quote} Date: ${date} Episode: ${episode}
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: prompt }]
-    });
+Give us a strong podcast intro.`;
 
-    const intro = completion.choices[0]?.message?.content?.trim();
-    if (!intro) throw new Error('Intro generation failed');
-
-    saveToMemory(sessionId, 'intro', intro);
-    res.status(200).json({ intro });
-
-  } catch (err) {
-    console.error('❌ Intro error:', err.message);
-    res.status(500).json({ error: 'Intro generation failed.' });
-  }
+const response = await openai.chat.completions.create({
+  model: 'gpt-4',
+  temperature: 0.7,
+  messages: [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ]
 });
 
+const intro = response.choices[0].message.content.trim();
+await saveToMemory(sessionId, 'intro', intro, reset);
+res.json({ intro });
+
+} catch (err) { console.error('❌ Intro error:', err.message); res.status(500).json({ error: 'Failed to generate intro' }); } });
+
 export default router;
+
