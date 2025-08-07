@@ -1,9 +1,9 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
 import { openai } from '../utils/openai.js';
 import getRandomSponsor from '../utils/getRandomSponsor.js';
 import generateCTA from '../utils/generateCTA.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 const router = express.Router();
 
@@ -15,26 +15,48 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    // Pick a random book and get its CTA line
-    const sponsor = getRandomSponsor(); // e.g. { title: "20", url: "https://..." }
-    const cta = generateCTA(sponsor);   // e.g. "You can find it at https://..."
+    const sponsor = getRandomSponsor(); // { title, url }
+    const cta = generateCTA(sponsor);   // fallback CTA text
 
     const prompt = `
-You're the British Gen X host of an AI podcast called "Turing's Torch: AI Weekly".
-Write a short, dry-witted outro that wraps up the episode and promotes this ebook:
+You're the British Gen X host of a podcast called "Turing's Torch: AI Weekly".
 
-Title: "${sponsor.title}"
-URL: ${sponsor.url}
+Generate a plain text outro written in the first person (no 'we', no 'our').
 
-Include the call to action below as the final paragraph:
-"${cta}"
+Tone: dry, intelligent, sarcastic, or oddly profound.
 
-Use dry humour, plain UK English, and no SSML or voice instructions.
-The output should be plain text and under 1000 words.
+Include:
+- This week’s ebook title: "${sponsor.title}"
+- The book's URL: ${sponsor.url}
+- A casual plug for the full ebook collection and newsletter at https://www.jonathan-harris.online
+- A punchy final sign-off line
+
+Avoid: robotic phrasing, team references, or formal sign-offs.
+Stick to under 1800 characters.
+Plain text only. No SSML, tags, or markdown.
     `.trim();
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
+      temperature: 0.7,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const outro = completion.choices[0].message.content.trim();
+
+    // Save to session file
+    const filePath = path.join('sessions', `${sessionId}-outro.txt`);
+    await fs.writeFile(filePath, outro, 'utf-8');
+
+    res.json({ sessionId, outro });
+
+  } catch (err) {
+    console.error('❌ Outro generation failed:', err.message);
+    res.status(500).json({ error: 'Outro generation error' });
+  }
+});
+
+export default router;      model: 'gpt-4',
       temperature: 0.75,
       messages: [{ role: 'user', content: prompt }]
     });
