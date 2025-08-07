@@ -1,9 +1,20 @@
-// utils/formatSponsor.js
+import fs from 'fs';
+import path from 'path';
 
-export function formatSponsor(book) {
-  if (!book?.title || !book?.author || !book?.link) {
-    return 'a brilliant AI book (details mysteriously missing)';
+let booksCache = null;
+
+export default function getRandomSponsor() {
+  if (!booksCache) {
+    const booksPath = path.resolve('data', 'books.json');
+    const raw = fs.readFileSync(booksPath, 'utf-8');
+    booksCache = JSON.parse(raw);
   }
 
-  return `${book.title} by ${book.author} – ${book.link}`;
+  const keys = Object.keys(booksCache);
+  const randomKey = keys[Math.floor(Math.random() * keys.length)];
+
+  return {
+    title: randomKey,
+    url: booksCache[randomKey]
+  };
 }
