@@ -1,4 +1,4 @@
-import express from 'express'; import { openai } from '../utils/openai.js'; import fetchFeeds from '../utils/fetchFeeds.js'; import { saveToMemory } from '../utils/memoryCache.js'; import fs from 'fs'; import path from 'path';
+// routes/main.js import express from 'express'; import { openai } from '../utils/openai.js'; import fetchFeeds from '../utils/fetchFeeds.js'; import { saveToMemory } from '../utils/memoryCache.js'; import fs from 'fs'; import path from 'path';
 
 const router = express.Router();
 
@@ -8,7 +8,6 @@ if (!rssFeedUrl || !sessionId) {
   return res.status(400).json({ error: 'Missing required fields' });
 }
 
-// Ensure 'storage' folder exists
 const storagePath = path.resolve('storage', sessionId);
 fs.mkdirSync(storagePath, { recursive: true });
 
@@ -21,15 +20,7 @@ const inputPrompt = `Rewrite each AI news summary as a standalone podcast segmen
 
 Tone: intelligent, sarcastic British Gen X — dry wit, cultural commentary, and confident delivery.
 
-For each article:
-
-Start with a dry joke or clever one-liner
-
-Explain the topic clearly
-
-Use natural phrasing
-
-Avoid repetition
+For each article: Start with a dry joke or clever one-liner Explain the topic clearly Use natural phrasing Avoid repetition
 
 Here are the stories: ${articleTextArray.join('\n')}`;
 
@@ -47,18 +38,5 @@ const completion = await openai.chat.completions.create({
 const chunks = completion.choices[0].message.content
   .split(/\n\n+/)
   .filter(Boolean)
-  .map(chunk => chunk.trim());
 
-const chunkPaths = chunks.map((_, i) => `storage/${sessionId}/tts-chunk-${i + 1}.txt`);
-
-await saveToMemory(sessionId, 'mainChunks', chunks);
-
-res.json({
-  sessionId,
-  chunkPaths
-});
-
-} catch (err) { console.error('❌ Main route error:', err); res.status(500).json({ error: 'Podcast generation failed' }); } });
-
-export default router;
-
+      
