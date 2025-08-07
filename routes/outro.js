@@ -1,9 +1,10 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+
 import { openai } from '../utils/openai.js';
 import getRandomSponsor from '../utils/getRandomSponsor.js';
 import generateCTA from '../utils/generateCTA.js';
-import fs from 'fs/promises';
-import path from 'path';
 
 const router = express.Router();
 
@@ -15,69 +16,44 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    const sponsor = getRandomSponsor(); // { title, url }
-    const cta = generateCTA(sponsor);   // fallback CTA text
+    // Get sponsor + CTA
+    const sponsor = getRandomSponsor(); // e.g. { title, url }
+    const cta = generateCTA(sponsor);   // plain text CTA
 
     const prompt = `
-You're the British Gen X host of a podcast called "Turing's Torch: AI Weekly".
+You're a dry-witted British Gen X podcast host wrapping up an episode of "Turing's Torch: AI Weekly".
+Your audience is smart, curious, and likely mildly caffeinated.
+You're signing off solo — no team, no "we".
+The sponsor is titled "${sponsor.title}" and is available at: ${sponsor.url}
 
-Generate a plain text outro written in the first person (no 'we', no 'our').
-
-Tone: dry, intelligent, sarcastic, or oddly profound.
-
-Include:
-- This week’s ebook title: "${sponsor.title}"
-- The book's URL: ${sponsor.url}
-- A casual plug for the full ebook collection and newsletter at https://www.jonathan-harris.online
-- A punchy final sign-off line
-
-Avoid: robotic phrasing, team references, or formal sign-offs.
-Stick to under 1800 characters.
-Plain text only. No SSML, tags, or markdown.
+Write a short, original outro that:
+- Feels conversational and human
+- Embeds the sponsor title and URL naturally
+- Ends with the CTA: "${cta}"
+- NO bullet points, NO SSML, NO markdown — just raw text
+- Keep it punchy and under 600 words
     `.trim();
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
-      temperature: 0.7,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    const outro = completion.choices[0].message.content.trim();
-
-    // Save to session file
-    const filePath = path.join('sessions', `${sessionId}-outro.txt`);
-    await fs.writeFile(filePath, outro, 'utf-8');
-
-    res.json({ sessionId, outro });
-
-  } catch (err) {
-    console.error('❌ Outro generation failed:', err.message);
-    res.status(500).json({ error: 'Outro generation error' });
-  }
-});
-
-export default router;      model: 'gpt-4',
       temperature: 0.75,
       messages: [{ role: 'user', content: prompt }]
     });
 
     const outro = completion.choices[0].message.content.trim();
 
-    // Ensure sessions folder exists
-    const sessionsDir = path.resolve('sessions');
-    if (!fs.existsSync(sessionsDir)) {
-      fs.mkdirSync(sessionsDir);
+    // Save to session folder
+    const storagePath = path.resolve('storage', sessionId);
+    if (!fs.existsSync(storagePath)) {
+      fs.mkdirSync(storagePath, { recursive: true });
     }
 
-    // Save the outro to a file
-    const outputPath = path.join(sessionsDir, `${sessionId}-outro.txt`);
-    fs.writeFileSync(outputPath, outro, 'utf-8');
+    fs.writeFileSync(path.join(storagePath, 'outro.txt'), outro);
 
-    // Return JSON response
     res.json({ sessionId, sponsor, outro });
 
   } catch (err) {
-    console.error('❌ Outro generation failed:', err.message);
+    console.error('❌ Outro generation failed:', err);
     res.status(500).json({ error: 'Outro generation error' });
   }
 });
