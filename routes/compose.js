@@ -1,58 +1,33 @@
-// routes/compose.js
-import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
-import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
-import { chunkText } from '../utils/chunkText.js';
-import { uploadToR2 } from '../utils/uploadToR2.js'; // ✅ Fixed import
+// routes/compose.js import express from 'express'; import fs from 'fs'; import path from 'path';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    if (!sessionId) throw new Error('No sessionId provided');
+router.post('/', async (req, res) => { try { const { sessionId } = req.body; if (!sessionId) { return res.status(400).json({ error: 'Missing sessionId' }); }
 
-    const storageDir = path.join('storage', sessionId);
+const storageDir = path.resolve('storage', sessionId);
+const introPath = path.join(storageDir, 'intro.txt');
+const outroPath = path.join(storageDir, 'outro.txt');
 
-    // Read all input files
-    const intro = await fs.readFile(path.join(storageDir, 'intro.txt'), 'utf8');
-    const main = await fs.readFile(path.join(storageDir, 'main.txt'), 'utf8');
-    const outroJson = JSON.parse(await fs.readFile(path.join(storageDir, 'outro.json'), 'utf8'));
+if (!fs.existsSync(introPath) || !fs.existsSync(outroPath)) {
+  return res.status(400).json({ error: 'Intro or outro not found' });
+}
 
-    const fullTranscript = cleanTranscript(`${intro.trim()}
+const intro = fs.readFileSync(introPath, 'utf-8');
+const outro = fs.readFileSync(outroPath, 'utf-8');
 
-${main.trim()}
+const mainChunks = fs
+  .readdirSync(storageDir)
+  .filter(f => f.startsWith('tts-chunk-'))
+  .sort()
+  .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8'));
 
-${Object.values(outroJson).join('\n\n')}`);
+const fullScript = [intro, ...mainChunks, outro].join('\n\n');
+const outputPath = path.join(storageDir, 'final-script.txt');
+fs.writeFileSync(outputPath, fullScript);
 
-    const ttsChunks = chunkText(fullTranscript);
+res.json({ sessionId, outputPath });
 
-    const title = formatTitle(await fs.readFile(path.join(storageDir, 'title.txt'), 'utf8'));
-    const description = (await fs.readFile(path.join(storageDir, 'description.txt'), 'utf8')).trim();
-    const keywordsRaw = await fs.readFile(path.join(storageDir, 'keywords.txt'), 'utf8');
-    const keywords = normaliseKeywords(keywordsRaw);
-    const artPrompt = (await fs.readFile(path.join(storageDir, 'artPrompt.txt'), 'utf8')).trim();
-
-    const payload = {
-      transcript: fullTranscript,
-      ttsChunks,
-      title,
-      description,
-      keywords,
-      artPrompt
-    };
-
-    // Upload transcript to R2
-    const transcriptKey = `${sessionId}.txt`;
-    const url = await uploadToR2(transcriptKey, fullTranscript);
-
-    res.status(200).json({ url, ...payload });
-
-  } catch (err) {
-    console.error('❌ Compose error:', err.message);
-    res.status(500).json({ error: 'Failed to generate full podcast output.' });
-  }
-});
+} catch (err) { console.error('❌ Compose error:', err); res.status(500).json({ error: 'Failed to compose final script' }); } });
 
 export default router;
+
