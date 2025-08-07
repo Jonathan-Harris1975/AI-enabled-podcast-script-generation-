@@ -1,0 +1,23 @@
+# Node modules
+node_modules/
+
+# Local environment variables
+.env
+
+# VSCode settings
+.vscode/
+
+# Build and logs
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Render + Docker mounts
+storage/
+
+# MacOS
+.DS_Store
+
+# Linux/Mac swap files
+*.swp
