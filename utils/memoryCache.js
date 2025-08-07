@@ -1,40 +1,46 @@
-const cache = {};
-const EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+// utils/memoryCache.js
 
-function storeSection(sessionId, type, content) {
-  const now = Date.now();
+const cache = {};
+
+/**
+ * Save content to memory cache under a session ID and file key.
+ * @param {string} sessionId
+ * @param {string} key - e.g. 'intro', 'main', 'outro'
+ * @param {string} content
+ */
+export function saveToMemory(sessionId, key, content) {
   if (!cache[sessionId]) {
     cache[sessionId] = {};
   }
-  cache[sessionId][type] = { content, timestamp: now };
+  cache[sessionId][key] = content;
 }
 
-function getSection(sessionId, type) {
-  cleanup();
-  return cache[sessionId]?.[type]?.content || null;
+/**
+ * Retrieve cached content by session ID and key.
+ * @param {string} sessionId
+ * @param {string} key
+ * @returns {string | undefined}
+ */
+export function getFromMemory(sessionId, key) {
+  return cache[sessionId]?.[key];
 }
 
-function getAllSections(sessionId) {
-  cleanup();
-  return cache[sessionId]
-    ? Object.fromEntries(
-        Object.entries(cache[sessionId]).map(([k, v]) => [k, v.content])
-      )
-    : {};
+/**
+ * Get all content for a session (e.g. intro + main + outro).
+ * @param {string} sessionId
+ * @returns {object} session content
+ */
+export function getSessionMemory(sessionId) {
+  return cache[sessionId] || {};
 }
 
-function clearSession(sessionId) {
+/**
+ * Clear a session from cache.
+ * @param {string} sessionId
+ */
+export function clearMemory(sessionId) {
   delete cache[sessionId];
-}
-
-function cleanup() {
-  const now = Date.now();
-  for (const sessionId of Object.keys(cache)) {
-    const allExpired = Object.values(cache[sessionId]).every(
-      (entry) => now - entry.timestamp > EXPIRY_MS
-    );
-    if (allExpired) {
-      delete cache[sessionId];
+}      delete cache[sessionId];
     }
   }
 }
