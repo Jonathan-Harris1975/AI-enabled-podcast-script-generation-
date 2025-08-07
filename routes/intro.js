@@ -1,50 +1,38 @@
-// ✅ INTRO ROUTE — STRUCTURED, HOST & EPISODE LOCKED
-
+// routes/intro.js
 import express from 'express';
 import { openai } from '../utils/openai.js';
-import { saveText } from '../utils/tempMemory.js';
+import { saveToMemory } from '../utils/memoryCache.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, weather, quote, episode } = req.body;
-
-    if (!sessionId || !weather || !quote || !episode) {
-      throw new Error('Missing required fields');
-    }
+    const { weather, turingQuote, sessionId } = req.body;
+    if (!sessionId || !weather || !turingQuote) throw new Error('Missing required fields');
 
     const prompt = `
-You're the sarcastic British Gen X host of the AI podcast 'Turing's Torch'.
+You're the host of the British podcast "Turing’s Torch: AI Weekly", voiced with a sarcastic British Gen X tone. Your name is Jonathan Harris. Begin the episode with a weather-related opener, then deliver this Alan Turing quote with gravitas.
 
-Open with a dry, witty welcome from host Jonathan Harris — name must be mentioned naturally.
+Weather: ${weather}
+Quote: ${turingQuote}
 
-Include:
-- A sarcastic weather summary: "${weather}"
-- This Alan Turing quote: "${quote}"
-- A cheeky nod to humans vs <say-as interpret-as="characters">A I</say-as>
-- Keep it short and punchy, no more than 60 seconds
-- DO NOT include the episode number in the script
-
-Return only the intro as a single plain text paragraph.
-`;
+Add personality and flair, bake in your name as host, and make it engaging without saying the episode number. Return plain text, no SSML.`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
-      temperature: 0.8,
+      temperature: 0.75,
       messages: [{ role: 'user', content: prompt }]
     });
 
     const intro = completion.choices[0]?.message?.content?.trim();
-    if (!intro) throw new Error('No intro returned from OpenAI');
+    if (!intro) throw new Error('Intro generation failed');
 
-    await saveText(sessionId, 'intro.txt', intro);
-
-    res.status(200).json({ intro, episode });
+    saveToMemory(sessionId, 'intro', intro);
+    res.status(200).json({ intro });
 
   } catch (err) {
-    console.error('❌ Intro route error:', err.message);
-    res.status(500).json({ error: 'Failed to generate intro.' });
+    console.error('❌ Intro error:', err.message);
+    res.status(500).json({ error: 'Intro generation failed.' });
   }
 });
 
