@@ -1,31 +1,42 @@
+
 import express from 'express';
-import OpenAI from '../utils/openai.js';
+import { openai } from '../utils/openai.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sections } = req.body;
+    const { intro, main, outro } = req.body;
 
-    let systemPrompt = `
-      Combine the following podcast sections into a seamless, engaging script.  
-      Maintain a British Gen X tone—witty, confident, and culturally aware.  
-      Ensure smooth transitions and consistent voice throughout.  
-    `;
+    const fullScript = `
+${intro}
 
-    const response = await OpenAI.chat.completions.create({
-      model: 'gpt-4o-mini',
+---
+
+${main}
+
+---
+
+${outro}
+`;
+
+    const systemPrompt = `
+You are a podcast editor for "Turing's Torch: AI Weekly".
+Merge the intro, main segment, and outro into a clean, broadcast-ready script in Gen X tone.
+Ensure smooth transitions and a consistent voice throughout.
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
       temperature: 0.75,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: JSON.stringify(sections) }
-      ],
+      messages: [{ role: 'user', content: `${systemPrompt}\n\n${fullScript}` }]
     });
 
-    res.json({ script: response.choices[0].message.content });
+    const message = completion.choices[0].message.content.trim();
+    res.status(200).json({ message });
   } catch (error) {
-    console.error('Error composing script:', error);
-    res.status(500).json({ error: 'Failed to compose script' });
+    console.error('Compose error:', error);
+    res.status(500).json({ error: 'Failed to compose full script' });
   }
 });
 
