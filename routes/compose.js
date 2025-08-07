@@ -13,11 +13,10 @@ router.post('/', async (req, res) => {
 
     const storageDir = path.join('storage', sessionId);
 
-    // Read individual content files
+    // Load required content
     const intro = await fs.readFile(path.join(storageDir, 'intro.txt'), 'utf8');
     const main = await fs.readFile(path.join(storageDir, 'main.txt'), 'utf8');
     const outroJson = JSON.parse(await fs.readFile(path.join(storageDir, 'outro.json'), 'utf8'));
-
     const outro = Object.values(outroJson).join('\n\n');
 
     const transcript = cleanTranscript(`${intro.trim()}\n\n${main.trim()}\n\n${outro}`);
@@ -37,7 +36,7 @@ router.post('/', async (req, res) => {
       artPrompt: artPromptRaw.trim()
     };
 
-    // Upload full transcript
+    // Upload transcript to R2
     const transcriptKey = `${sessionId}.txt`;
     const url = await uploadToR2(transcriptKey, transcript);
 
@@ -50,13 +49,3 @@ router.post('/', async (req, res) => {
 });
 
 export default router;
-// Upload full transcript to R2
-const transcriptKey = `${sessionId}.txt`;
-const url = await uploadToR2(transcriptKey, transcript);
-
-res.status(200).json({ url, ...payload });
-
-} catch (err) { console.error('❌ Compose error:', err.message); res.status(500).json({ error: 'Failed to generate full podcast output.' }); } });
-
-export default router;
-
