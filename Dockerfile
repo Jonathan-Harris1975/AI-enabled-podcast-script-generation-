@@ -13,14 +13,14 @@ FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
-# Copy only the necessary parts
+# Copy built app from builder
 COPY --from=builder /usr/src/app /usr/src/app
 
-# Ensure the storage directory exists
+# Ensure storage dir exists at runtime
 RUN mkdir -p storage
 
-# Expose port
+# Expose the app port
 EXPOSE 3000
 
-# Start the server
+# Start the service using index.js
 CMD ["node", "index.js"]
