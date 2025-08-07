@@ -1,28 +1,41 @@
 import express from 'express';
-import getWeatherSummary from '../utils/weather.js';
-import getTuringQuote from '../utils/getTuringQuote.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { openai } from '../utils/openai.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const weather = await getWeatherSummary();
-    const quote = getTuringQuote();
+    const { prompt, sessionId } = req.body;
+    if (!sessionId) throw new Error('No sessionId provided');
 
-    const intro = `
-Hello, dear listeners, and welcome to another episode of "Turing's Torch: AI Weekly."
-I'm your host, Jonathan Harris — broadcasting direct from London, where the weather today is ${weather.toLowerCase()} — which, let’s be honest, is just Britain's way of saying, “try again tomorrow.”
+    const fullPrompt = `
+You're the sarcastic British Gen X host of 'Turing's Torch'.
 
-Before we dive into this week’s digital chaos, here’s a bit of wisdom from Alan Turing:
-"${quote}"
+Generate a casual and witty podcast intro (plain text only). Keep it short and human. Include a brief nod to the weekly AI weather theme. No sponsor, no outro. Just set the tone.
 
-So grab a strong cuppa, slap your neural nets into gear, and let’s get sarcastic about silicon.
+${prompt || ''}
     `.trim();
 
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      temperature: 0.7,
+      messages: [{ role: 'user', content: fullPrompt }]
+    });
+
+    const intro = completion.choices[0]?.message?.content?.trim();
+    if (!intro) throw new Error('Empty intro from OpenAI.');
+
+    const dir = path.join('storage', sessionId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'intro.txt'), intro, 'utf8');
+
     res.status(200).json({ intro });
+
   } catch (err) {
     console.error('❌ Intro route error:', err.message);
-    res.status(500).json({ error: 'Failed to generate intro.' });
+    res.status(500).json({ error: 'Failed to generate intro.', details: err.message });
   }
 });
 
