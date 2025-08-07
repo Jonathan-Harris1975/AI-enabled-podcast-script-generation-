@@ -1,9 +1,5 @@
-const generateCta = (book) => {
-  if (!book || !book.slug) {
-    return `Want more? Head to jonathan-harris.online for the full ebook collection, sharp AI updates, and the newsletter sign-up.`;
-  }
+export default function generateCta(book) {
+  const safeTitle = book?.title?.replace(/[-]/g, ' ') ?? 'this topic';
 
-  return `Curious to dive deeper into "${book.slug}"? Head over to https://books.jonathan-harris.online/${book.slug} — you'll find the full ebook collection, AI updates, and the newsletter signup. No spam, just sharp insights.`;
-};
-
-export default generateCta;
+  return `Curious to explore "${safeTitle}" and more? Head over to https://jonathan-harris.online — you'll find my full ebook collection, daily AI newsletter, and plenty of sharp, spam-free insights.`;
+}
