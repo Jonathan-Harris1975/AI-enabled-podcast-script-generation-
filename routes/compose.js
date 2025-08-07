@@ -1,82 +1,47 @@
-import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import r2Client from '../utils/r2Client.js';
-import editAndFormat from '../utils/editAndFormat.js';
+// ✅ COMPOSE ROUTE — CLEAN, STRUCTURED, R2-UPLOADING
+
+import express from 'express'; import fs from 'fs/promises'; import path from 'path'; import { chunkText, cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js'; import uploadToR2 from '../utils/uploadToR2.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
+router.post('/', async (req, res) => { try { const { sessionId } = req.body; if (!sessionId) throw new Error('No sessionId provided');
 
-    const basePath = path.resolve(`./storage/${sessionId}`);
-    const read = async (file) => {
-      const fullPath = path.join(basePath, file);
-      return (await fs.readFile(fullPath, 'utf8')).trim();
-    };
+const storageDir = path.join('storage', sessionId);
 
-    const [
-      intro,
-      main,
-      outro,
-      titleRaw,
-      descriptionRaw,
-      keywordsRaw,
-      artPrompt
-    ] = await Promise.all([
-      read('intro.txt'),
-      read('main.txt'),
-      read('outro.txt'),
-      read('title.txt'),
-      read('description.txt'),
-      read('keywords.txt'),
-      read('artPrompt.txt')
-    ]);
+// Read all necessary files
+const intro = await fs.readFile(path.join(storageDir, 'intro.txt'), 'utf8');
+const main = await fs.readFile(path.join(storageDir, 'main.txt'), 'utf8');
+const outroJson = JSON.parse(await fs.readFile(path.join(storageDir, 'outro.json'), 'utf8'));
 
-    // 🔧 Apply plain text edits + formatting
-    const {
-      title,
-      description,
-      transcript,
-      ttsChunks,
-      keywords
-    } = editAndFormat({
-      intro,
-      main,
-      outro,
-      title: titleRaw,
-      description: descriptionRaw,
-      keywordsRaw
-    });
+// Clean and structure content
+const transcript = cleanTranscript(`${intro.trim()}
 
-    // 💾 Upload transcript to R2
-    const objectKey = `${sessionId}.txt`;
-    await r2Client.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET,
-      Key: objectKey,
-      Body: transcript,
-      ContentType: 'text/plain'
-    }));
+${main.trim()}
 
-    const transcriptUrl = `${process.env.R2_PUBLIC_BASE_URL}/${process.env.R2_BUCKET}/${objectKey}`;
+${Object.values(outroJson).join('\n\n')}`); const ttsChunks = chunkText(transcript);
 
-    // ✅ Final structured output
-    res.status(200).json({
-      title,
-      description,
-      keywords,
-      artPrompt,
-      transcriptUrl,
-      ttsChunks
-    });
+const title = formatTitle(await fs.readFile(path.join(storageDir, 'title.txt'), 'utf8'));
+const description = (await fs.readFile(path.join(storageDir, 'description.txt'), 'utf8')).trim();
+const keywordsRaw = (await fs.readFile(path.join(storageDir, 'keywords.txt'), 'utf8'));
+const keywords = normaliseKeywords(keywordsRaw);
+const artPrompt = (await fs.readFile(path.join(storageDir, 'artPrompt.txt'), 'utf8')).trim();
 
-  } catch (err) {
-    console.error('❌ Compose session merge failed:', err.message);
-    res.status(500).json({ error: 'Failed to generate full podcast output.' });
-  }
-});
+const payload = {
+  transcript,
+  ttsChunks,
+  title,
+  description,
+  keywords,
+  artPrompt
+};
+
+// Upload full transcript to R2
+const transcriptKey = `${sessionId}.txt`;
+const url = await uploadToR2(transcriptKey, transcript);
+
+res.status(200).json({ url, ...payload });
+
+} catch (err) { console.error('❌ Compose error:', err.message); res.status(500).json({ error: 'Failed to generate full podcast output.' }); } });
 
 export default router;
+
