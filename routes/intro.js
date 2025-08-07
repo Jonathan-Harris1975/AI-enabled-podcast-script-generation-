@@ -1,33 +1,44 @@
-// routes/intro.js import express from 'express'; import { openai } from '../utils/openai.js'; import getWeatherSummary from '../utils/weather.js'; import fetchQuotes from '../utils/fetchQuotes.js'; import { saveToMemory } from '../utils/memoryCache.js';
+// routes/intro.js
+import express from 'express';
+import { openai } from '../utils/openai.js';
+import { saveToMemory, clearMemory } from '../utils/memoryCache.js';
+import { getIntroPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => { try { const { sessionId, date, episode, reset } = req.body; if (!sessionId || !date || !episode) { return res.status(400).json({ error: 'Missing required fields' }); }
+router.post('/', async (req, res) => {
+  try {
+    const { sessionId, date, episode, reset } = req.body;
 
-const weather = await getWeatherSummary();
-const quote = await fetchQuotes();
+    if (!sessionId || !date || !episode) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
 
-const systemPrompt = `You're Jonathan Harris, host of Turing’s Torch: AI Weekly. Use a dry, British Gen X tone. Open with a sharp weather jab, blend in the week's tone, and wrap with an Alan Turing quote.`;
-const userPrompt = `Today’s weather summary: ${weather}
+    if (reset && reset === 'Y') {
+      await clearMemory(sessionId);
+    }
 
-Alan Turing quote: ${quote} Date: ${date} Episode: ${episode}
+    const prompt = getIntroPrompt(date, episode);
 
-Give us a strong podcast intro.`;
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      temperature: 0.75,
+      messages: [{ role: 'user', content: prompt }]
+    });
 
-const response = await openai.chat.completions.create({
-  model: 'gpt-4',
-  temperature: 0.7,
-  messages: [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
-  ]
+    const intro = completion.choices[0].message.content.trim();
+    const filePath = `storage/${sessionId}/intro.txt`;
+
+    await saveToMemory(sessionId, 'intro', intro);
+
+    res.json({
+      sessionId,
+      introPath: filePath
+    });
+  } catch (err) {
+    console.error('❌ Intro route error:', err);
+    res.status(500).json({ error: 'Intro generation failed' });
+  }
 });
 
-const intro = response.choices[0].message.content.trim();
-await saveToMemory(sessionId, 'intro', intro, reset);
-res.json({ intro });
-
-} catch (err) { console.error('❌ Intro error:', err.message); res.status(500).json({ error: 'Failed to generate intro' }); } });
-
 export default router;
-
