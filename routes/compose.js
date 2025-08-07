@@ -33,7 +33,6 @@ router.post('/', async (req, res) => {
       })
       .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8').trim());
 
-    // Clean and flatten all chunks
     const cleanedChunks = await Promise.all(
       [intro, ...mainChunks, outro].map(async chunk => {
         const edited = await editAndFormat(chunk);
@@ -42,66 +41,10 @@ router.post('/', async (req, res) => {
       })
     );
 
-    // 🔀 Random tone selection
     const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'oddly poetic'];
     const tone = tones[Math.floor(Math.random() * tones.length)];
     console.log(`🎙️ Selected tone: ${tone}`);
 
-    // Save final array of chunks + tone to file
-    const output = {
-      tone,
-      chunks: cleanedChunks
-    };
-
-    const outputPath = path.join(storageDir, 'final-chunks.json');
-    fs.writeFileSync(outputPath, JSON.stringify(output, null, 2));
-
-    res.json({ sessionId, ...output });
-
-  } catch (err) {
-    console.error('❌ Compose error:', err);
-    res.status(500).json({ error: 'Failed to compose final chunks' });
-  }
-});
-
-export default router;    return edited.replace(/\n+/g, ' ');
-  })
-);
-
-
-    // 🔀 Random tone selection
-    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'oddly poetic'];
-    const tone = tones[Math.floor(Math.random() * tones.length)];
-    console.log(`🎙️ Selected tone: ${tone}`);
-
-    // Save final array of chunks + tone to file
-    const output = {
-      tone,
-      chunks: cleanedChunks
-    };
-
-    const outputPath = path.join(storageDir, 'final-chunks.json');
-    fs.writeFileSync(outputPath, JSON.stringify(output, null, 2));
-
-    res.json({ sessionId, ...output });
-
-  } catch (err) {
-    console.error('❌ Compose error:', err);
-    res.status(500).json({ error: 'Failed to compose final chunks' });
-  }
-});
-
-export default router;    return edited.replace(/\n+/g, ' ');
-  })
-);
-    );
-
-    // 🔀 Random tone selection
-    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'oddly poetic'];
-    const tone = tones[Math.floor(Math.random() * tones.length)];
-    console.log(`🎙️ Selected tone: ${tone}`);
-
-    // Save final array of chunks + tone to file
     const output = {
       tone,
       chunks: cleanedChunks
