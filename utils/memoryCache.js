@@ -1,42 +1,34 @@
-// utils/memoryCache.js
+// utils/uploadToR2.js
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
-const memoryStore = new Map();
+const {
+  R2_ACCESS_KEY,
+  R2_SECRET_KEY,
+  R2_BUCKET,
+  R2_ENDPOINT
+} = process.env;
 
-/**
- * Save a value under a session and key
- * @param {string} sessionId
- * @param {string} key
- * @param {*} value
- */
-export function saveToMemory(sessionId, key, value) {
-  if (!memoryStore.has(sessionId)) {
-    memoryStore.set(sessionId, {});
+const s3 = new S3Client({
+  region: 'auto',
+  endpoint: R2_ENDPOINT,
+  credentials: {
+    accessKeyId: R2_ACCESS_KEY,
+    secretAccessKey: R2_SECRET_KEY
   }
-  memoryStore.get(sessionId)[key] = value;
-}
+});
 
 /**
- * Retrieve a value from memory by session and key
- * @param {string} sessionId
- * @param {string} key
- * @returns {*}
+ * Uploads a file to R2.
+ * @param {string} fileName - Name of the file to store (e.g. 'episode-001.txt')
+ * @param {string} content - Plain text content to upload
  */
-export function getFromMemory(sessionId, key) {
-  return memoryStore.get(sessionId)?.[key];
-}
+export async function uploadToR2(fileName, content) {
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: fileName,
+    Body: content,
+    ContentType: 'text/plain'
+  });
 
-/**
- * Flush memory for a session
- * @param {string} sessionId
- */
-export function flushSession(sessionId) {
-  memoryStore.delete(sessionId);
-}
-
-/**
- * Dump entire memory (for debugging)
- * @returns {Map}
- */
-export function dumpMemory() {
-  return memoryStore;
+  await s3.send(command);
 }
