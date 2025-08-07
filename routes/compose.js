@@ -1,46 +1,53 @@
 // routes/compose.js
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import { cleanTranscript, formatTitle, normaliseKeywords } from '../utils/editAndFormat.js';
 import { chunkText } from '../utils/chunkText.js';
-import uploadToR2 from '../utils/uploadToR2.js';
-import { getFromMemory, saveToMemory } from '../utils/memoryCache.js';
+import { uploadToR2 } from '../utils/uploadToR2.js'; // ✅ Fixed import
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, title, description, keywords, artPrompt } = req.body;
-    if (!sessionId || !title || !description || !keywords || !artPrompt) {
-      throw new Error('Missing required compose fields');
-    }
+    const { sessionId } = req.body;
+    if (!sessionId) throw new Error('No sessionId provided');
 
-    const intro = getFromMemory(sessionId, 'intro');
-    const main = getFromMemory(sessionId, 'main');
+    const storageDir = path.join('storage', sessionId);
 
-    if (!intro || !main) throw new Error('Intro or main missing from memory');
+    // Read all input files
+    const intro = await fs.readFile(path.join(storageDir, 'intro.txt'), 'utf8');
+    const main = await fs.readFile(path.join(storageDir, 'main.txt'), 'utf8');
+    const outroJson = JSON.parse(await fs.readFile(path.join(storageDir, 'outro.json'), 'utf8'));
 
-    const transcript = cleanTranscript(`${intro}\n\n${main}`);
-    const ttsChunks = chunkText(transcript);
+    const fullTranscript = cleanTranscript(`${intro.trim()}
 
-    saveToMemory(sessionId, 'transcript', transcript);
-    saveToMemory(sessionId, 'ttsChunks', ttsChunks);
-    saveToMemory(sessionId, 'title', title);
-    saveToMemory(sessionId, 'description', description);
-    saveToMemory(sessionId, 'keywords', normaliseKeywords(keywords));
-    saveToMemory(sessionId, 'artPrompt', artPrompt);
+${main.trim()}
 
-    const transcriptKey = `${sessionId}.txt`;
-    const url = await uploadToR2(transcriptKey, transcript);
+${Object.values(outroJson).join('\n\n')}`);
 
-    res.status(200).json({
-      url,
-      transcript,
+    const ttsChunks = chunkText(fullTranscript);
+
+    const title = formatTitle(await fs.readFile(path.join(storageDir, 'title.txt'), 'utf8'));
+    const description = (await fs.readFile(path.join(storageDir, 'description.txt'), 'utf8')).trim();
+    const keywordsRaw = await fs.readFile(path.join(storageDir, 'keywords.txt'), 'utf8');
+    const keywords = normaliseKeywords(keywordsRaw);
+    const artPrompt = (await fs.readFile(path.join(storageDir, 'artPrompt.txt'), 'utf8')).trim();
+
+    const payload = {
+      transcript: fullTranscript,
       ttsChunks,
-      title: formatTitle(title),
+      title,
       description,
-      keywords: normaliseKeywords(keywords),
+      keywords,
       artPrompt
-    });
+    };
+
+    // Upload transcript to R2
+    const transcriptKey = `${sessionId}.txt`;
+    const url = await uploadToR2(transcriptKey, fullTranscript);
+
+    res.status(200).json({ url, ...payload });
 
   } catch (err) {
     console.error('❌ Compose error:', err.message);
