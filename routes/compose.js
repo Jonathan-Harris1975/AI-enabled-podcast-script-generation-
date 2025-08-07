@@ -6,7 +6,7 @@ import {
   getSEOKeywordsPrompt,
   getArtworkPrompt
 } from '../utils/podcastHelpers.js';
-import { editAndFormat } from '../utils/editAndFormat.js';
+import editAndFormat from '../utils/editAndFormat.js';
 
 const router = express.Router();
 
