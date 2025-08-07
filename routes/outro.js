@@ -5,7 +5,6 @@ import path from 'path';
 import { openai } from '../utils/openai.js';
 import getRandomSponsor from '../utils/getRandomSponsor.js';
 import generateCta from '../utils/generateCta.js';
-import generateOutroPrompt from '../utils/generateOutro.js';
 
 const router = express.Router();
 
@@ -16,9 +15,21 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    const book = getRandomSponsor();         // ✅ Includes slug + title
-    const cta = generateCta(book);           // ✅ Clean fallback CTA included
-    const prompt = generateOutroPrompt(book, cta); // ✅ Dynamic prompt
+    const book = getRandomSponsor(); // Contains title and slug
+    const cta = generateCta(book);
+
+    const prompt = `
+You're the dry-witted British host of 'Turing's Torch: AI Weekly'.
+Generate a witty, engaging podcast outro that:
+
+- Reflects on the episode's AI theme with humour
+- Promotes this week's featured ebook: "${book.title}"
+- Includes this call-to-action: ${cta}
+- Sounds natural and human (not like you're reading an ad)
+- Is written in plain text (no SSML)
+
+Use first-person voice ("I've written", "my book", etc.). Keep it under 800 words.
+`.trim();
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
@@ -26,19 +37,20 @@ router.post('/', async (req, res) => {
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const outro = completion.choices[0].message.content.trim();
+    const outroText = completion.choices[0].message.content.trim();
 
-    const dir = path.resolve('storage', sessionId);
-    const file = path.join(dir, 'outro.txt');
+    // Save to storage
+    const storageDir = path.resolve('storage', sessionId);
+    if (!fs.existsSync(storageDir)) {
+      fs.mkdirSync(storageDir, { recursive: true });
+    }
 
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, outro, 'utf-8');
+    const outroPath = path.join(storageDir, 'outro.txt');
+    fs.writeFileSync(outroPath, outroText);
 
-    console.log(`✅ Outro saved to: ${file}`);
-    res.json({ sessionId, outro });
-
+    res.json({ sessionId, outro: outroText });
   } catch (err) {
-    console.error('❌ Outro generation failed:', err.message);
+    console.error('❌ Outro generation failed:', err);
     res.status(500).json({ error: 'Outro generation error' });
   }
 });
