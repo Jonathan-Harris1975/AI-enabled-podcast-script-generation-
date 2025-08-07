@@ -1,5 +1,7 @@
 // routes/compose.js import express from 'express'; import fs from 'fs'; import path from 'path';
 
+import scriptComposer from '../utils/scriptComposer.js'; import editAndFormat from '../utils/editAndFormat.js'; import chunkText from '../utils/chunkText.js';
+
 const router = express.Router();
 
 router.post('/', async (req, res) => { try { const { sessionId } = req.body; if (!sessionId) { return res.status(400).json({ error: 'Missing sessionId' }); }
@@ -21,13 +23,19 @@ const mainChunks = fs
   .sort()
   .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8'));
 
-const fullScript = [intro, ...mainChunks, outro].join('\n\n');
-const outputPath = path.join(storageDir, 'final-script.txt');
-fs.writeFileSync(outputPath, fullScript);
+const rawScript = [intro, ...mainChunks, outro].join('\n\n');
 
-res.json({ sessionId, outputPath });
+// 🎯 Run through scriptComposer for editing + chunking
+const { finalTranscriptPath, chunkPaths } = await scriptComposer(sessionId, rawScript);
+
+res.json({
+  sessionId,
+  transcript: finalTranscriptPath,
+  ttsChunks: chunkPaths
+});
 
 } catch (err) { console.error('❌ Compose error:', err); res.status(500).json({ error: 'Failed to compose final script' }); } });
 
 export default router;
 
+  
