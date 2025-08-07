@@ -39,6 +39,21 @@ const completion = await openai.chat.completions.create({
   ]
 });
 
-const chunks = completion.choices[
+const chunks = completion.choices[0].message.content
+  .split(/\n\n+/)
+  .filter(Boolean)
+  .map(chunk => chunk.trim());
 
-  
+const chunkPaths = chunks.map((_, i) => `storage/${sessionId}/tts-chunk-${i + 1}.txt`);
+
+await saveToMemory(sessionId, 'mainChunks', chunks);
+
+res.json({
+  sessionId,
+  chunkPaths
+});
+
+} catch (err) { console.error('❌ Main route error:', err); res.status(500).json({ error: 'Podcast generation failed' }); } });
+
+export default router;
+
