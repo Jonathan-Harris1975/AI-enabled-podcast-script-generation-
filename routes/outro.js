@@ -1,40 +1,47 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
 import { openai } from '../utils/openai.js';
-import { saveToMemory } from '../utils/memoryCache.js';
-import { getOutroPrompt } from '../utils/promptTemplates.js';
+import getRandomSponsor from '../utils/getRandomSponsor.js';
+import generateCTA from '../utils/generateCTA.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, hostName, sponsorText } = req.body;
+    const { sessionId } = req.body;
 
-    if (!sessionId || !hostName || !sponsorText) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    const prompt = getOutroPrompt({ hostName, sponsorText });
+    const sponsor = getRandomSponsor(); // e.g. "The Alignment Problem"
+    const cta = generateCTA(sponsor);   // returns full SSML string with call to action
+
+    const prompt = `
+You're the British Gen X host of an AI podcast called "Turing's Torch: AI Weekly".
+Generate a witty, engaging podcast outro using the ebook title: "${sponsor}".
+Use SSML with natural pacing and dry humour. End with this CTA:
+
+${cta}
+
+Wrap the output in <speak> tags. Output one JSON-safe line under 4500 chars.
+    `.trim();
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
       temperature: 0.7,
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
+      messages: [{ role: 'user', content: prompt }]
     });
 
-    const outroText = completion.choices[0].message.content.trim();
+    const outro = completion.choices[0].message.content.trim();
+    res.json({ sessionId, outro });
 
-    await saveToMemory(sessionId, 'outroText', outroText);
+  } catch (err) {
+    console.error('❌ Outro generation failed:', err.message);
+    res.status(500).json({ error: 'Outro generation error' });
+  }
+});
 
-    const filePath = path.resolve('storage', sessionId, 'outro.txt');
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, outroText, 'utf8');
+export default router;    fs.writeFileSync(filePath, outroText, 'utf8');
 
     res.json({
       sessionId,
