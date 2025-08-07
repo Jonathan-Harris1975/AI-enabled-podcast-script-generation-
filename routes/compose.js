@@ -13,7 +13,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    const storageDir = path.resolve('storage', sessionId);
+    const storageDir = path.resolve('/mnt/data', sessionId);
     const introPath = path.join(storageDir, 'intro.txt');
     const outroPath = path.join(storageDir, 'outro.txt');
 
