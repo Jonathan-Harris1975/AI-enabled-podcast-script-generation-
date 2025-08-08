@@ -1,6 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import uploadchunksToR2 from '..utils/uploadchunksToR2.js';
 import editAndFormat from '../utils/editAndFormat.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 import {
@@ -59,7 +60,7 @@ router.post('/', async (req, res) => {
       finalChunks.map(async (chunk, index) => {
         const localPath = path.join(storageDir, `chunk-${index}.txt`);
         fs.writeFileSync(localPath, chunk);
-        const r2Url = await uploadToR2(localPath, `raw-text/${sessionId}/chunk-${index}.txt`);
+        const r2Url = await uploadchunksToR2 (localPath, `raw-text/${sessionId}/chunk-${index}.txt`);
         return r2Url;
       })
     );
