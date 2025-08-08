@@ -1,4 +1,6 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import { openai } from '../utils/openai.js';
 import fetchFeeds from '../utils/fetchFeeds.js';
 import { saveToMemory } from '../utils/memoryCache.js';
@@ -45,8 +47,17 @@ Here are the stories: ${articleTextArray.join('\n')}`;
       .filter(Boolean)
       .map(chunk => chunk.trim());
 
-    const chunkPaths = chunks.map((_, i) => `/mnt/data/${sessionId}/raw-chunk-${i + 1}.txt`);
+    const storageDir = path.resolve('/mnt/data', sessionId);
+    fs.mkdirSync(storageDir, { recursive: true });
+
+    chunks.forEach((chunk, i) => {
+      const filePath = path.join(storageDir, `raw-chunk-${i}.txt`);
+      fs.writeFileSync(filePath, chunk);
+    });
+
     await saveToMemory(sessionId, 'mainChunks', chunks);
+
+    const chunkPaths = chunks.map((_, i) => `/mnt/data/${sessionId}/raw-chunk-${i}.txt`);
 
     res.json({
       sessionId,
