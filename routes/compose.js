@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { uploadchunksToR2 } from '../utils/uploadchunksToR2.js';
+import uploadchunksToR2 from '../utils/uploadchunksToR2.js';
 import editAndFormat from '../utils/editAndFormat.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 import {
