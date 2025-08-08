@@ -22,13 +22,15 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Intro or outro not found' });
     }
 
-    const intro = fs.readFileSync(introPath, 'utf-8').trim();
-    const outro = fs.readFileSync(outroPath, 'utf-8').trim();
+    // Read intro & outro as-is (no edit)
+    const intro = fs.readFileSync(introPath, 'utf-8').trim().replace(/\n+/g, ' ');
+    const outro = fs.readFileSync(outroPath, 'utf-8').trim().replace(/\n+/g, ' ');
 
     console.log('📁 Reading files from:', storageDir);
     const allFiles = fs.readdirSync(storageDir);
     console.log('📄 Files in session folder:', allFiles);
 
+    // Get raw chunk files
     const rawChunkFiles = allFiles
       .filter(f => f.startsWith('raw-chunk-'))
       .sort((a, b) => {
@@ -40,32 +42,28 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No raw chunk files found' });
     }
 
-    const mainChunks = rawChunkFiles.map(f => {
-      const filePath = path.join(storageDir, f);
-      const content = fs.readFileSync(filePath, 'utf-8').trim();
-      if (!content) throw new Error(`Empty chunk file: ${f}`);
-      return content;
-    });
-
-    // Edit only the raw chunks
+    // Read and edit main chunks
     const editedMainChunks = await Promise.all(
-      mainChunks.map(async chunk => {
-        const edited = await editAndFormat(chunk);
+      rawChunkFiles.map(async f => {
+        const filePath = path.join(storageDir, f);
+        const content = fs.readFileSync(filePath, 'utf-8').trim();
+        if (!content) throw new Error(`Empty chunk file: ${f}`);
+        const edited = await editAndFormat(content);
         return (typeof edited === 'string' ? edited : '').replace(/\n+/g, ' ');
       })
     );
 
-    // Merge intro + edited main chunks + outro into one transcript
+    // Merge all into transcript
     const transcript = [intro, ...editedMainChunks, outro].join(' ');
 
-    // Split transcript into ≤ 4500 char chunks
+    // Split into ≤ 4500 character chunks
     const finalChunks = splitPlainText(transcript, 4500);
 
     // Save transcript
     const transcriptPath = path.join(storageDir, 'final-transcript.txt');
     fs.writeFileSync(transcriptPath, transcript);
 
-    // Save final chunks
+    // Save chunks JSON
     const finalChunksPath = path.join(storageDir, 'final-chunks.json');
     fs.writeFileSync(finalChunksPath, JSON.stringify(finalChunks, null, 2));
 
