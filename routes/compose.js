@@ -7,8 +7,8 @@ import {
   getArtworkPrompt
 } from '../utils/podcastHelpers.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import scriptComposer from '..utils/scriptComposer.js';
-import splitPlainText from '..utils/splitPlainText.js,;
+import scriptComposer from '../utils/scriptComposer.js';
+import splitPlainText from '../utils/splitPlainText.js,;
 const router = express.Router();
 
 router.post('/', async (req, res) => {
