@@ -8,7 +8,7 @@ import {
 } from '../utils/podcastHelpers.js';
 import editAndFormat from '../utils/editAndFormat.js';
 import scriptComposer from '../utils/scriptComposer.js';
-import splitPlainText from '../utils/splitPlainText.js,;
+import splitPlainText from '../utils/splitPlainText.js';
 const router = express.Router();
 
 router.post('/', async (req, res) => {
@@ -46,7 +46,7 @@ router.post('/', async (req, res) => {
       })
     );
 
-    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'oddly poetic'];
+    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'Witty','oddly poetic'];
     const tone = tones[Math.floor(Math.random() * tones.length)];
     console.log(`🎙️ Selected tone: ${tone}`);
 
