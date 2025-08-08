@@ -1,21 +1,16 @@
-// utils/splitPlainText.js
-export default function splitPlainText(text, maxLength = 4800) {
+export default function splitPlainText(text, maxLength = 4500) {
   const chunks = [];
   let current = '';
-  const sentences = text.split(/(?<=[.?!])\s+/);
 
-  for (const sentence of sentences) {
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
     if ((current + sentence).length <= maxLength) {
-      current += sentence + ' ';
+      current += (current ? ' ' : '') + sentence;
     } else {
-      chunks.push(current.trim());
-      current = sentence + ' ';
+      if (current) chunks.push(current.trim());
+      current = sentence;
     }
   }
 
-  if (current.trim()) {
-    chunks.push(current.trim());
-  }
-
+  if (current) chunks.push(current.trim());
   return chunks;
 }
