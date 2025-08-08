@@ -5,10 +5,10 @@ const {
   R2_SECRET_KEY,
   R2_BUCKET_CHUNKS,
   R2_ENDPOINT,
-  R2_PUBLIC_BASE_URL
+  R2_PUBLIC_BASE_URL_1
 } = process.env;
 
-if (!R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET_CHUNKS || !R2_ENDPOINT || !R2_PUBLIC_BASE_URL) {
+if (!R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET_CHUNKS || !R2_ENDPOINT || !R2_PUBLIC_BASE_URL_1) {
   throw new Error('Missing one or more required R2 environment variables.');
 }
 
@@ -19,7 +19,7 @@ const s3 = new S3Client({
   credentials: {
     accessKeyId: R2_ACCESS_KEY,
     secretAccessKey: R2_SECRET_KEY
-  }
+  }l
 });
 
 /**
@@ -42,7 +42,7 @@ export async function uploadchunksToR2(localFilePath, r2Key) {
 
     await s3.send(command);
     console.log(`✅ Uploaded to R2: ${r2Key}`);
-    return `${R2_PUBLIC_BASE_URL}${r2Key}`;
+    return `${R2_PUBLIC_BASE_URL_1}${r2Key}`;
   } catch (error) {
     console.error(`❌ Failed to upload ${r2Key}:`, error);
     throw error;
