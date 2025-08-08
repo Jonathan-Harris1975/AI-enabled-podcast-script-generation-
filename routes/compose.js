@@ -9,11 +9,13 @@ import {
 import editAndFormat from '../utils/editAndFormat.js';
 import scriptComposer from '../utils/scriptComposer.js';
 import splitPlainText from '../utils/splitPlainText.js';
+
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
+
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
@@ -29,15 +31,33 @@ router.post('/', async (req, res) => {
     const intro = fs.readFileSync(introPath, 'utf-8').trim();
     const outro = fs.readFileSync(outroPath, 'utf-8').trim();
 
-    const mainChunks = fs
-      .readdirSync(storageDir)
+    // Debug logging
+    console.log('📁 Reading files from:', storageDir);
+    const allFiles = fs.readdirSync(storageDir);
+    console.log('📄 Files in session folder:', allFiles);
+
+    // Find and validate raw main chunks
+    const rawChunkFiles = allFiles
       .filter(f => f.startsWith('raw-chunk-'))
       .sort((a, b) => {
         const getNum = f => parseInt(f.match(/\d+/)[0], 10);
         return getNum(a) - getNum(b);
-      })
-      .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8').trim());
+      });
 
+    if (rawChunkFiles.length === 0) {
+      return res.status(400).json({ error: 'No raw chunk files found' });
+    }
+
+    const mainChunks = rawChunkFiles.map(f => {
+      const filePath = path.join(storageDir, f);
+      const content = fs.readFileSync(filePath, 'utf-8').trim();
+      if (!content) {
+        throw new Error(`Empty chunk file: ${f}`);
+      }
+      return content;
+    });
+
+    // Clean and format all chunks
     const cleanedChunks = await Promise.all(
       [intro, ...mainChunks, outro].map(async chunk => {
         const edited = await editAndFormat(chunk);
@@ -46,11 +66,13 @@ router.post('/', async (req, res) => {
       })
     );
 
-    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'Witty','oddly poetic'];
+    // Select random tone
+    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'witty', 'oddly poetic'];
     const tone = tones[Math.floor(Math.random() * tones.length)];
     console.log(`🎙️ Selected tone: ${tone}`);
 
     const output = {
+      sessionId,
       tone,
       chunks: cleanedChunks
     };
@@ -58,11 +80,11 @@ router.post('/', async (req, res) => {
     const outputPath = path.join(storageDir, 'final-chunks.json');
     fs.writeFileSync(outputPath, JSON.stringify(output, null, 2));
 
-    res.json({ sessionId, ...output });
+    res.json(output);
 
   } catch (err) {
     console.error('❌ Compose error:', err);
-    res.status(500).json({ error: 'Failed to compose final chunks' });
+    res.status(500).json({ error: 'Failed to compose final chunks', details: err.message });
   }
 });
 
