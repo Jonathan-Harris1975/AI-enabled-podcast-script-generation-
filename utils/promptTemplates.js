@@ -15,7 +15,7 @@ For each story:
 - Start with a dry joke or clever jab (bonus points if it’s anti-hype)
 - Explain the topic clearly like you’re chatting to your smarter mate down the pub
 - Keep it flowing, human, and never repetitive
-
+- between 3000 and 4000 characters long
 Here’s the week’s AI nonsense worth dissecting:
 ${articleTextArray.join('\n')}`;
 }
