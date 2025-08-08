@@ -6,12 +6,12 @@ import { openai } from '../utils/openai.js';
 import getSponsor from '../utils/getSponsor.js';
 import generateCta from '../utils/generateCta.js';
 
-
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
+
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
@@ -27,18 +27,24 @@ router.post('/', async (req, res) => {
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const rawOutro = completion.choices[0].message.content.trim();
-  
-    const finalOutro = formattedOutro.replace(/\n+/g, ' ');
+    const rawOutro = completion.choices[0]?.message?.content?.trim();
+
+    if (!rawOutro) {
+      console.error('❌ No outro generated from OpenAI');
+      return res.status(500).json({ error: 'OpenAI did not return any content' });
+    }
+
+    const finalOutro = rawOutro.replace(/\n+/g, ' ');
 
     const storageDir = path.resolve('/mnt/data', sessionId);
-fs.mkdirSync(storageDir, { recursive: true });
-fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
+    fs.mkdirSync(storageDir, { recursive: true });
+    fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
 
     res.json({
       sessionId,
       outroPath: `${storageDir}/outro.txt`
     });
+
   } catch (err) {
     console.error('❌ Outro generation failed:', err);
     res.status(500).json({ error: 'Failed to generate outro' });
