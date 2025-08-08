@@ -5,7 +5,7 @@ import path from 'path';
 import { openai } from '../utils/openai.js';
 import getSponsor from '../utils/getSponsor.js';
 import generateCta from '../utils/generateCta.js';
-import { getOutroPrompt, selectedTone } from '../utils/promptTemplates.js';
+import editAndFormat from '../utils/editAndFormat.js';
 
 const router = express.Router();
 
@@ -19,12 +19,7 @@ router.post('/', async (req, res) => {
     const sponsor = await getSponsor();
     const cta = await generateCta();
 
-    // Use our centralized outro prompt with consistent tone & host name
-    const prompt = getOutroPrompt({
-      sponsorTitle: sponsor.title,
-      sponsorURL: sponsor.url,
-      cta
-    });
+    const prompt = `You're the British Gen X host of Turing's Torch: AI Weekly. You're signing off the show with a witty, reflective outro. Reference this ebook: "${sponsor.title}" (link: ${sponsor.url}). Speak in the first person, no third-person references. Make the book sound like one *you* wrote, and keep the tone dry, confident, and informal. Close with this CTA: ${cta}. Output should be plain text with no paragraph breaks.`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
@@ -32,25 +27,21 @@ router.post('/', async (req, res) => {
       messages: [{ role: 'user', content: prompt }]
     });
 
-    let finalOutro = completion.choices[0].message.content.trim();
-
-    // Ensure plain text with no paragraph breaks
-    finalOutro = finalOutro.replace(/\n+/g, ' ');
+    const rawOutro = completion.choices[0].message.content.trim();
+    const formattedOutro = await editAndFormat(rawOutro);
+    const finalOutro = formattedOutro.replace(/\n+/g, ' ');
 
     const storageDir = path.resolve('/mnt/data', sessionId);
-    fs.mkdirSync(storageDir, { recursive: true });
-    const outroPath = path.join(storageDir, 'outro.txt');
-    fs.writeFileSync(outroPath, finalOutro);
+fs.mkdirSync(storageDir, { recursive: true });
+fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
 
     res.json({
       sessionId,
-      tone: selectedTone,
-      outroPath
+      outroPath: `${storageDir}/outro.txt`
     });
-
   } catch (err) {
     console.error('❌ Outro generation failed:', err);
-    res.status(500).json({ error: 'Failed to generate outro', details: err.message });
+    res.status(500).json({ error: 'Failed to generate outro' });
   }
 });
 
