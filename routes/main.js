@@ -95,7 +95,7 @@ export default router;
       chunkPaths
     });
 
-  } catch (err) {
+   catch (err) {
     console.error('❌ Main route error:', err);
     res.status(500).json({ error: 'Podcast generation failed', details: err.message });
   }
