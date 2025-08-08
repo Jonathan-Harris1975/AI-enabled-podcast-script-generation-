@@ -2,6 +2,8 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import editAndFormat from '../utils/editAndFormat.js';
+import composeScript from '../utils/scriptComposer.js';
+import splitPlainText from '../utils/splitPlainText.js';
 
 const router = express.Router();
 
@@ -20,12 +22,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Intro or outro not found' });
     }
 
-    const intro = fs.readFileSync(introPath, 'utf-8').trim();
-    const outro = fs.readFileSync(outroPath, 'utf-8').trim();
+    const intro = fs.readFileSync(introPath, 'utf-8').trim().replace(/\n+/g, ' ');
+    const outro = fs.readFileSync(outroPath, 'utf-8').trim().replace(/\n+/g, ' ');
 
-    console.log('📁 Reading from:', storageDir);
+    console.log('📁 Reading files from:', storageDir);
     const allFiles = fs.readdirSync(storageDir);
-    console.log('📄 Files found:', allFiles);
+    console.log('📄 Files in session folder:', allFiles);
 
     const rawChunkFiles = allFiles
       .filter(f => f.startsWith('raw-chunk-'))
@@ -38,17 +40,17 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No raw chunk files found' });
     }
 
-    const mainChunks = rawChunkFiles.map(f => {
+    const rawChunks = rawChunkFiles.map(f => {
       const filePath = path.join(storageDir, f);
       const content = fs.readFileSync(filePath, 'utf-8').trim();
       if (!content) throw new Error(`Empty chunk file: ${f}`);
       return content;
     });
 
-    const cleanedChunks = await Promise.all(
-      [intro, ...mainChunks, outro].map(async chunk => {
+    const formattedChunks = await Promise.all(
+      rawChunks.map(async chunk => {
         const edited = await editAndFormat(chunk);
-        return (typeof edited === 'string' ? edited : '').replace(/\n+/g, ' ');
+        return typeof edited === 'string' ? edited.replace(/\n+/g, ' ') : '';
       })
     );
 
@@ -56,20 +58,26 @@ router.post('/', async (req, res) => {
     const tone = tones[Math.floor(Math.random() * tones.length)];
     console.log(`🎙️ Selected tone: ${tone}`);
 
-    const transcript = cleanedChunks.join(' ').trim();
+    const transcript = await composeScript(intro, formattedChunks, outro);
     const transcriptPath = path.join(storageDir, 'transcript.txt');
     fs.writeFileSync(transcriptPath, transcript);
 
-    const output = {
+    // Split into chunks ≤ 4500 characters, plain text (no line breaks)
+    const cleanTranscript = transcript.replace(/\n+/g, ' ');
+    const finalChunks = splitPlainText(cleanTranscript, 4500);
+
+    const chunksPath = path.join(storageDir, 'final-chunks.json');
+    fs.writeFileSync(chunksPath, JSON.stringify(finalChunks, null, 2));
+
+    res.json({
       sessionId,
       tone,
-      chunks: cleanedChunks,
-      transcriptPath
-    };
+      transcriptPath,
+      chunksPath,
+      chunkCount: finalChunks.length,
+      chunks: finalChunks
+    });
 
-    fs.writeFileSync(path.join(storageDir, 'final-chunks.json'), JSON.stringify(output, null, 2));
-
-    res.json(output);
   } catch (err) {
     console.error('❌ Compose error:', err);
     res.status(500).json({ error: 'Failed to compose final chunks', details: err.message });
