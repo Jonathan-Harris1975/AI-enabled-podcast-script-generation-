@@ -42,7 +42,7 @@ export async function uploadchunksToR2(localFilePath, r2Key) {
 
     await s3.send(command);
     console.log(`✅ Uploaded to R2: ${r2Key}`);
-    return `${R2_PUBLIC_BASE_URL}/${r2Key}`;
+    return `${R2_PUBLIC_BASE_URL}${r2Key}`;
   } catch (error) {
     console.error(`❌ Failed to upload ${r2Key}:`, error);
     throw error;
