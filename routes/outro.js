@@ -5,7 +5,7 @@ import path from 'path';
 import { openai } from '../utils/openai.js';
 import getSponsor from '../utils/getSponsor.js';
 import generateCta from '../utils/generateCta.js';
-import editAndFormat from '../utils/editAndFormat.js';
+
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ router.post('/', async (req, res) => {
     });
 
     const rawOutro = completion.choices[0].message.content.trim();
-    const formattedOutro = await editAndFormat(rawOutro);
+  
     const finalOutro = formattedOutro.replace(/\n+/g, ' ');
 
     const storageDir = path.resolve('/mnt/data', sessionId);
