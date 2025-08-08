@@ -27,7 +27,7 @@ const s3 = new S3Client({
  * @param {string} r2Key - The key in R2 bucket (e.g. 'raw-text/sessionId/chunk-0.txt')
  * @returns {Promise<string>} - R2 URL or key
  */
-export async function uploadChunksToR2(localFilePath, r2Key) {
+export async function uploadchunksToR2(localFilePath, r2Key) {
   try {
     const fs = await import('fs/promises');
     const fileContent = await fs.readFile(localFilePath, 'utf-8');
