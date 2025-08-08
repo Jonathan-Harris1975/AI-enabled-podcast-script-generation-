@@ -5,7 +5,7 @@ const {
   R2_SECRET_KEY,
   R2_BUCKET_CHUNKS,
   R2_ENDPOINT,
-  R2_PUBLIC_BASE_URL;
+  R2_PUBLIC_BASE_URL
 } = process.env;
 
 // Validate required environment variables
