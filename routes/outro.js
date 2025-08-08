@@ -11,41 +11,43 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
-
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
 
+    // Retrieve dynamic content
     const sponsor = await getSponsor();
     const cta = await generateCta();
 
+    // Construct the outro prompt
     const prompt = `You're the British Gen X host of Turing's Torch: AI Weekly. You're signing off the show with a witty, reflective outro. Reference this ebook: "${sponsor.title}" (link: ${sponsor.url}). Speak in the first person, no third-person references. Make the book sound like one *you* wrote, and keep the tone dry, confident, and informal. Close with this CTA: ${cta}. Output should be plain text with no paragraph breaks.`;
 
+    // Generate outro with OpenAI
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: process.env.OPENAI_MODEL_OUTRO || 'gpt-4o-mini',
       temperature: 0.75,
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const rawOutro = completion.choices[0]?.message?.content?.trim();
-
+    const rawOutro = completion.choices?.[0]?.message?.content?.trim();
     if (!rawOutro) {
       console.error('❌ No outro generated from OpenAI');
       return res.status(500).json({ error: 'OpenAI did not return any content' });
     }
 
-    // Replace line breaks
+    // Format to single line
     const formattedOutro = rawOutro.replace(/\n+/g, ' ');
 
-    // Write to disk
+    // Save to disk
     const storageDir = path.resolve('/mnt/data', sessionId);
     fs.mkdirSync(storageDir, { recursive: true });
-    fs.writeFileSync(path.join(storageDir, 'outro.txt'), formattedOutro);
+    const filePath = path.join(storageDir, 'outro.txt');
+    fs.writeFileSync(filePath, formattedOutro);
 
-    // Respond
+    // Success response
     res.json({
       sessionId,
-      outroPath: `${storageDir}/outro.txt`
+      outroPath: filePath
     });
 
   } catch (err) {
