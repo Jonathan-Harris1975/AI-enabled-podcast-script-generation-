@@ -1,20 +1,14 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { uploadchunksToR2 } from '../utils/uploadchunksToR2.js';
-import editAndFormat from '../utils/editAndFormat.js';
-import { uploadToR2 }from '../utils/uploadToR2.js';
 import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
   getArtworkPrompt
 } from '../utils/podcastHelpers.js';
-import {
-  cleanTranscript,
-  formatTitle,
-  normaliseKeywords
-} from '../utils/textHelpers.js';
-
+import editAndFormat from '../utils/editAndFormat.js';
+import scriptComposer from '../utils/scriptComposer.js';
+import splitPlainText from '../utils/splitPlainText.js';
 const router = express.Router();
 
 router.post('/', async (req, res) => {
@@ -44,58 +38,27 @@ router.post('/', async (req, res) => {
       })
       .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8').trim());
 
-    // Apply editAndFormat only to main chunks
-    const formattedMainChunks = await Promise.all(
-      mainChunks.map(async chunk => {
+    const cleanedChunks = await Promise.all(
+      [intro, ...mainChunks, outro].map(async chunk => {
         const edited = await editAndFormat(chunk);
-        return typeof edited === 'string' ? edited.trim() : '';
+        const safeEdited = typeof edited === 'string' ? edited : '';
+        return safeEdited.replace(/\n+/g, ' ');
       })
     );
 
-    // Merge all into final chunks
-    const finalChunks = [intro, ...formattedMainChunks, outro];
-
-    // Upload each chunk to R2 and collect URLs
-    const ttsChunkUrls = await Promise.all(
-      finalChunks.map(async (chunk, index) => {
-        const chunksPath = path.join(storageDir, `chunk-${index}.txt`);
-        fs.writeFileSync(chunksPath, chunk);
-        const r2Url = await uploadchunksToR2 (chunksPath, `raw-text/${sessionId}/chunk-${index}.txt`);
-        return r2Url;
-      })
-    );
-
-    // Build and clean full transcript
-    const fullTranscript = finalChunks.join('\n\n');
-    const cleanedTranscript = cleanTranscript(fullTranscript);
-
-    // Save transcript and upload to R2
-    const transcriptPath = path.join(storageDir, 'transcript.txt');
-    fs.writeFileSync(transcriptPath, cleanedTranscript);
-    const transcriptUrl = await uploadToR2(transcriptPath, `transcripts/${sessionId}/transcript.txt`);
-
-    // Generate episode metadata
-    const titleRaw = await getTitleDescriptionPrompt(cleanedTranscript);
-    const description = await getTitleDescriptionPrompt(cleanedTranscript);
-    const keywordsRaw = await getSEOKeywordsPrompt(cleanedTranscript);
-    const artworkPrompt = await getArtworkPrompt(cleanedTranscript);
-
-    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'witty', 'oddly poetic'];
+    const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'Witty','oddly poetic'];
     const tone = tones[Math.floor(Math.random() * tones.length)];
+    console.log(`🎙️ Selected tone: ${tone}`);
 
     const output = {
-      sessionId,
       tone,
-      title: formatTitle(titleRaw),
-      description,
-      keywords: normaliseKeywords(keywordsRaw),
-      artworkPrompt,
-      transcript: cleanedTranscript,
-      transcriptUrl,
-      ttsChunks: ttsChunkUrls
+      chunks: cleanedChunks
     };
 
-    res.json(output);
+    const outputPath = path.join(storageDir, 'final-chunks.json');
+    fs.writeFileSync(outputPath, JSON.stringify(output, null, 2));
+
+    res.json({ sessionId, ...output });
 
   } catch (err) {
     console.error('❌ Compose error:', err);
