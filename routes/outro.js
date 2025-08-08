@@ -34,12 +34,15 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'OpenAI did not return any content' });
     }
 
-    const finalOutro = rawOutro.replace(/\n+/g, ' ');
+    // Replace line breaks
+    const formattedOutro = rawOutro.replace(/\n+/g, ' ');
 
+    // Write to disk
     const storageDir = path.resolve('/mnt/data', sessionId);
     fs.mkdirSync(storageDir, { recursive: true });
-    fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
+    fs.writeFileSync(path.join(storageDir, 'outro.txt'), formattedOutro);
 
+    // Respond
     res.json({
       sessionId,
       outroPath: `${storageDir}/outro.txt`
