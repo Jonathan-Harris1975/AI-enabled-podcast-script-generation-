@@ -1,7 +1,8 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
-
+import dotenv from 'dotenv';
+dotenv.config();
 // Routes
 import healthRoute from './routes/health.js';
 import introRoute from './routes/intro.js';
