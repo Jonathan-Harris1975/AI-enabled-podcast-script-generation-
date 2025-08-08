@@ -58,9 +58,9 @@ router.post('/', async (req, res) => {
     // Upload each chunk to R2 and collect URLs
     const ttsChunkUrls = await Promise.all(
       finalChunks.map(async (chunk, index) => {
-        const localPath = path.join(storageDir, `chunk-${index}.txt`);
-        fs.writeFileSync(localPath, chunk);
-        const r2Url = await uploadchunksToR2 (localPath, `raw-text/${sessionId}/chunk-${index}.txt`);
+        const chunksPath = path.join(storageDir, `chunk-${index}.txt`);
+        fs.writeFileSync(chunksPath, chunk);
+        const r2Url = await uploadchunksToR2 (chunksPath, `raw-text/${sessionId}/chunk-${index}.txt`);
         return r2Url;
       })
     );
