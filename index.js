@@ -8,7 +8,7 @@ import introRoute from './routes/intro.js';
 import mainRoute from './routes/main.js';
 import outroRoute from './routes/outro.js';
 import composeRoute from './routes/compose.js';
-import clearSessionRoute from './routes/clearsession.js';
+import clearSessionRoute from './routes/clearSession.js'; // ✅ Fixed case
 
 const app = express();
 const PORT = process.env.PORT || 3000;
