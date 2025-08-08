@@ -1,8 +1,7 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
-import dotenv from 'dotenv';
-dotenv.config();
+
 // Routes
 import healthRoute from './routes/health.js';
 import introRoute from './routes/intro.js';
@@ -36,14 +35,6 @@ app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack);
   res.status(500).json({ error: 'Internal server error' });
 });
-
-try {
-  app.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
-  });
-} catch (err) {
-  console.error('❌ Top-level server error:', err);
-}
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
