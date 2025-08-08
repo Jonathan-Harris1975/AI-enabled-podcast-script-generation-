@@ -1,14 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import {
-  getTitleDescriptionPrompt,
-  getSEOKeywordsPrompt,
-  getArtworkPrompt
-} from '../utils/podcastHelpers.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import uploadToR2 from '../utils/uploadToR2.js';
-import uploadChunksToR2 from '../utils/uploadchunksToR2.js';
 
 const router = express.Router();
 
@@ -30,8 +23,10 @@ router.post('/', async (req, res) => {
     const intro = fs.readFileSync(introPath, 'utf-8').trim();
     const outro = fs.readFileSync(outroPath, 'utf-8').trim();
 
-    // List and read all chunk files
+    console.log('📁 Reading from:', storageDir);
     const allFiles = fs.readdirSync(storageDir);
+    console.log('📄 Files found:', allFiles);
+
     const rawChunkFiles = allFiles
       .filter(f => f.startsWith('raw-chunk-'))
       .sort((a, b) => {
@@ -50,41 +45,31 @@ router.post('/', async (req, res) => {
       return content;
     });
 
-    // Format all chunks
     const cleanedChunks = await Promise.all(
       [intro, ...mainChunks, outro].map(async chunk => {
         const edited = await editAndFormat(chunk);
-        const safeEdited = typeof edited === 'string' ? edited : '';
-        return safeEdited.replace(/\n+/g, ' ');
+        return (typeof edited === 'string' ? edited : '').replace(/\n+/g, ' ');
       })
     );
 
-    // Join into one transcript
-    const fullTranscript = cleanedChunks.join('\n\n');
-
-    // Select tone
     const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'witty', 'oddly poetic'];
     const tone = tones[Math.floor(Math.random() * tones.length)];
     console.log(`🎙️ Selected tone: ${tone}`);
 
-    // Save transcript locally
+    const transcript = cleanedChunks.join(' ').trim();
     const transcriptPath = path.join(storageDir, 'transcript.txt');
-    fs.writeFileSync(transcriptPath, fullTranscript);
+    fs.writeFileSync(transcriptPath, transcript);
 
-    // Upload transcript to R2
-    const transcriptUrl = await uploadToR2(transcriptPath, `transcripts/${sessionId}.txt`);
-
-    // Upload chunks to R2
-    const chunkUrls = await uploadChunksToR2(cleanedChunks, sessionId);
-
-    // Respond
-    res.json({
+    const output = {
       sessionId,
       tone,
-      transcriptUrl,
-      chunkUrls
-    });
+      chunks: cleanedChunks,
+      transcriptPath
+    };
 
+    fs.writeFileSync(path.join(storageDir, 'final-chunks.json'), JSON.stringify(output, null, 2));
+
+    res.json(output);
   } catch (err) {
     console.error('❌ Compose error:', err);
     res.status(500).json({ error: 'Failed to compose final chunks', details: err.message });
