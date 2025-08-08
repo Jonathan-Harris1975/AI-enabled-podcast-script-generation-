@@ -1,4 +1,3 @@
-// utils/uploadChunksToR2.js
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const {
@@ -24,32 +23,27 @@ const s3 = new S3Client({
 
 /**
  * Uploads a file to R2.
- * @param {string} fileName - Name of the file to store (e.g. 'episode-001.txt')
- * @param {string} content - Plain text content to upload
- * @returns {Promise<void>}
+ * @param {string} localFilePath - Full path to the file to upload
+ * @param {string} r2Key - The key in R2 bucket (e.g. 'raw-text/sessionId/chunk-0.txt')
+ * @returns {Promise<string>} - R2 URL or key
  */
-export async function uploadChunksToR2(fileName, content) {
+export async function uploadChunksToR2(localFilePath, r2Key) {
   try {
+    const fs = await import('fs/promises');
+    const fileContent = await fs.readFile(localFilePath, 'utf-8');
+
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET_CHUNKS,
-      Key: fileName,
-      Body: content,
+      Key: r2Key,
+      Body: fileContent,
       ContentType: 'text/plain'
     });
 
     await s3.send(command);
-    console.log(`✅ Successfully uploaded: ${fileName}`);
+    console.log(`✅ Uploaded to R2: ${r2Key}`);
+    return `https://${R2_BUCKET_CHUNKS}.${R2_ENDPOINT.replace(/^https?:\/\//, '')}/${r2Key}`;
   } catch (error) {
-    console.error(`❌ Failed to upload ${fileName}:`, error);
-    throw error;
-  }
-}      ContentType: 'text/plain'
-    });
-
-    await s3.send(command);
-    console.log(`✅ Successfully uploaded: ${fileName}`);
-  } catch (error) {
-    console.error(`❌ Failed to upload ${fileName}:`, error);
+    console.error(`❌ Failed to upload ${r2Key}:`, error);
     throw error;
   }
 }
