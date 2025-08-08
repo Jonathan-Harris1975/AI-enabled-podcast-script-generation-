@@ -37,11 +37,11 @@ router.post('/', async (req, res) => {
     // Ensure each chunk is between 2000–4000 characters
     chunks = chunks.filter(chunk => {
       const len = chunk.length;
-      return len >= 2000 && len <= 4000;
+      return len >= 500 && len <= 5000;
     });
 
     if (chunks.length === 0) {
-      throw new Error('No chunks met the character length requirement (2000-4000 characters).');
+      throw new Error('No chunks met the character length requirement (500-4000 characters).');
     }
 
     const storageDir = path.resolve('/mnt/data', sessionId);
