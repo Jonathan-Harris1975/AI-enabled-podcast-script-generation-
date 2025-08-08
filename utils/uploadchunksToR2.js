@@ -43,4 +43,13 @@ export async function uploadChunksToR2(fileName, content) {
     console.error(`❌ Failed to upload ${fileName}:`, error);
     throw error;
   }
+}      ContentType: 'text/plain'
+    });
+
+    await s3.send(command);
+    console.log(`✅ Successfully uploaded: ${fileName}`);
+  } catch (error) {
+    console.error(`❌ Failed to upload ${fileName}:`, error);
+    throw error;
+  }
 }
