@@ -7,15 +7,14 @@ import {
   getArtworkPrompt
 } from '../utils/podcastHelpers.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import scriptComposer from '../utils/scriptComposer.js';
-import splitPlainText from '../utils/splitPlainText.js';
+import uploadToR2 from '../utils/uploadToR2.js';
+import uploadChunksToR2 from '../utils/uploadchunksToR2.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
-
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
@@ -31,12 +30,8 @@ router.post('/', async (req, res) => {
     const intro = fs.readFileSync(introPath, 'utf-8').trim();
     const outro = fs.readFileSync(outroPath, 'utf-8').trim();
 
-    // Debug logging
-    console.log('📁 Reading files from:', storageDir);
+    // List and read all chunk files
     const allFiles = fs.readdirSync(storageDir);
-    console.log('📄 Files in session folder:', allFiles);
-
-    // Find and validate raw main chunks
     const rawChunkFiles = allFiles
       .filter(f => f.startsWith('raw-chunk-'))
       .sort((a, b) => {
@@ -51,13 +46,11 @@ router.post('/', async (req, res) => {
     const mainChunks = rawChunkFiles.map(f => {
       const filePath = path.join(storageDir, f);
       const content = fs.readFileSync(filePath, 'utf-8').trim();
-      if (!content) {
-        throw new Error(`Empty chunk file: ${f}`);
-      }
+      if (!content) throw new Error(`Empty chunk file: ${f}`);
       return content;
     });
 
-    // Clean and format all chunks
+    // Format all chunks
     const cleanedChunks = await Promise.all(
       [intro, ...mainChunks, outro].map(async chunk => {
         const edited = await editAndFormat(chunk);
@@ -66,21 +59,31 @@ router.post('/', async (req, res) => {
       })
     );
 
-    // Select random tone
+    // Join into one transcript
+    const fullTranscript = cleanedChunks.join('\n\n');
+
+    // Select tone
     const tones = ['cheeky', 'reflective', 'high-energy', 'dry as hell', 'overly sincere', 'witty', 'oddly poetic'];
     const tone = tones[Math.floor(Math.random() * tones.length)];
     console.log(`🎙️ Selected tone: ${tone}`);
 
-    const output = {
+    // Save transcript locally
+    const transcriptPath = path.join(storageDir, 'transcript.txt');
+    fs.writeFileSync(transcriptPath, fullTranscript);
+
+    // Upload transcript to R2
+    const transcriptUrl = await uploadToR2(transcriptPath, `transcripts/${sessionId}.txt`);
+
+    // Upload chunks to R2
+    const chunkUrls = await uploadChunksToR2(cleanedChunks, sessionId);
+
+    // Respond
+    res.json({
       sessionId,
       tone,
-      chunks: cleanedChunks
-    };
-
-    const outputPath = path.join(storageDir, 'final-chunks.json');
-    fs.writeFileSync(outputPath, JSON.stringify(output, null, 2));
-
-    res.json(output);
+      transcriptUrl,
+      chunkUrls
+    });
 
   } catch (err) {
     console.error('❌ Compose error:', err);
