@@ -1,77 +1,84 @@
-// routes/compose.js
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import editAndFormat from '../utils/editAndFormat.js';
+import os from 'os';
 import splitPlainText from '../utils/splitPlainText.js';
-import {
-  getTitleDescriptionPrompt,
-  getSEOKeywordsPrompt,
-  getArtworkPrompt
-} from '../utils/podcastHelpers.js';
+import editAndFormat from '../utils/editAndFormat.js';
+import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
 import uploadToR2 from '../utils/uploadToR2.js';
+import { getTitleDescriptionPrompt, getSEOKeywordsPrompt, getArtworkPrompt } from '../utils/podcastHelpers.js';
+import runAI from '../utils/runAI.js'; // your AI call util
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
+router.post('/compose', async (req, res) => {
   try {
-    const { transcript } = req.body;
-    if (!transcript) {
-      return res.status(400).json({ error: 'Transcript is required' });
+    const { sessionId, rawText } = req.body;
+    if (!sessionId || !rawText) {
+      return res.status(400).json({ error: 'Missing sessionId or rawText' });
     }
 
-    // Clean + format transcript
-    const cleanedTranscript = await editAndFormat(transcript);
+    // Prepare storage directory
+    const storageDir = path.resolve('/mnt/data', sessionId);
+    if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 
-    // Save full transcript locally
-    const sessionId = `TT-${new Date().toISOString().split('T')[0]}`;
-    const transcriptsDir = path.join(process.cwd(), 'sessions', sessionId);
-    fs.mkdirSync(transcriptsDir, { recursive: true });
-    const transcriptPath = path.join(transcriptsDir, 'transcript.txt');
-    fs.writeFileSync(transcriptPath, cleanedTranscript, 'utf-8');
+    // 1. Edit & format raw text → full transcript
+    const editedText = await editAndFormat(rawText);
+    if (!editedText || editedText.trim() === '') {
+      return res.status(400).json({ error: 'Transcript is empty after formatting' });
+    }
 
-    // Upload full transcript to R2
-    const transcriptUrl = await uploadToR2(
-      `transcripts/${sessionId}/transcript.txt`,
-      cleanedTranscript
-    );
+    // 2. Save full transcript locally
+    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
+    fs.writeFileSync(transcriptPath, editedText, 'utf-8');
 
-    // Split into chunks of ~4500 chars
-    const chunks = splitPlainText(cleanedTranscript, 4500);
+    // 3. Split into chunks of max 4500 chars
+    const chunks = splitPlainText(editedText, 4500);
 
-    // Upload chunks to R2 and collect URLs
-    const chunkUrls = await Promise.all(
-      chunks.map((chunk, idx) =>
-        uploadToR2(
-          `raw-text/${sessionId}/chunk-${idx + 1}.txt`,
-          chunk
-        )
-      )
-    );
+    // 4. Upload full transcript to R2 (final-text bucket)
+    const transcriptKey = `final-text/${sessionId}/final-transcript.txt`;
+    const transcriptUrl = await uploadToR2(transcriptPath, transcriptKey);
 
-    // Build single combined prompt for title + description
-    const tdPrompt = getTitleDescriptionPrompt(cleanedTranscript);
-    const { title, description } = await editAndFormat(tdPrompt, true);
+    // 5. Upload chunks to R2 (raw-text bucket)
+    const chunkUrls = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const tempFilePath = path.join(os.tmpdir(), `upload-chunk-${sessionId}-${i + 1}.txt`);
+      fs.writeFileSync(tempFilePath, chunk, 'utf-8');
+      const key = `raw-text/${sessionId}/chunk-${i + 1}.txt`;
+      const url = await uploadChunksToR2(tempFilePath, key);
+      fs.unlinkSync(tempFilePath);
+      chunkUrls.push(url);
+    }
 
-    // Get SEO keywords
+    // 6. Generate AI metadata prompts — AFTER transcript is created/uploaded
+    const titleDescPrompt = getTitleDescriptionPrompt(editedText);
+    const titleDescJson = await runAI(titleDescPrompt);
+    const { title, description } = JSON.parse(titleDescJson);
+
     const seoPrompt = getSEOKeywordsPrompt(description);
-    const seoKeywords = await editAndFormat(seoPrompt);
+    const seoKeywords = await runAI(seoPrompt);
 
-    // Get artwork prompt
     const artworkPrompt = getArtworkPrompt(description);
+    const artworkDescription = await runAI(artworkPrompt);
 
-    // Final API response
+    // 7. Send all results
     res.json({
-      title,
-      description,
-      seoKeywords,
-      artworkPrompt,
-      fullTranscript: transcriptUrl,
-      chunks: chunkUrls
+      sessionId,
+      transcriptUrl,
+      chunkUrls,
+      chunks,
+      fullTranscript: editedText,
+      podcast: {
+        title,
+        description,
+        seoKeywords,
+        artworkPrompt: artworkDescription
+      }
     });
   } catch (err) {
     console.error('Compose route error:', err);
-    res.status(500).json({ error: 'Failed to process transcript' });
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
