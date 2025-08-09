@@ -1,10 +1,10 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { join, resolve } from 'path';
+import { URL } from 'url';
 import uploadChunksToR2 from '../utils/uploadchunksToR2.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import { books } from '../utils/books.js';
 import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
@@ -16,85 +16,95 @@ import {
   normaliseKeywords
 } from '../utils/textHelpers.js';
 
+// Load books data using Node.js compatible method
+const booksData = JSON.parse(
+  readFileSync(new URL('../books.json', import.meta.url))
+);
+const books = () => booksData[Math.floor(Math.random() * booksData.length)];
+
 const router = express.Router();
 
-// Environment configuration
-const STORAGE_DIR = process.env.STORAGE_DIR || path.join(process.cwd(), 'data');
-const MAX_CHUNKS = process.env.MAX_CHUNKS ? parseInt(process.env.MAX_CHUNKS) : 20;
+// Configurable storage directory (Render compatible)
+const STORAGE_BASE = process.env.STORAGE_DIR || resolve('data');
+const MAX_CHUNKS = process.env.MAX_CHUNKS || 20;
+
+// Helper functions
+const safeRead = (filePath) => {
+  try {
+    return readFileSync(filePath, 'utf-8').trim();
+  } catch (err) {
+    console.error(`File read error (${filePath}):`, err.message);
+    throw new Error(`Failed to read: ${filePath.split('/').pop()}`);
+  }
+};
+
+const validateSessionId = (id) => {
+  if (!id || typeof id !== 'string') return false;
+  return /^[a-z0-9-_]+$/i.test(id);
+};
 
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
-    
+
     // Validate input
-    if (!sessionId || typeof sessionId !== 'string') {
-      return res.status(400).json({ error: 'Invalid sessionId' });
+    if (!validateSessionId(sessionId)) {
+      return res.status(400).json({ 
+        error: 'Invalid sessionId - only alphanumeric, dash and underscore allowed'
+      });
     }
 
-    // Security: Prevent directory traversal
-    if (/[^a-z0-9\-_]/i.test(sessionId)) {
-      return res.status(400).json({ error: 'Invalid sessionId format' });
-    }
+    const sessionDir = join(STORAGE_BASE, sessionId);
 
-    const sessionDir = path.join(STORAGE_DIR, sessionId);
-
-    // Check if session directory exists
-    if (!fs.existsSync(sessionDir)) {
+    // Verify session directory exists
+    if (!existsSync(sessionDir)) {
       return res.status(404).json({ error: 'Session not found' });
     }
-
-    // Helper function for safe file operations
-    const readFileSafe = (filePath) => {
-      try {
-        return fs.readFileSync(filePath, 'utf-8').trim();
-      } catch (err) {
-        console.error(`Error reading ${path.basename(filePath)}:`, err.message);
-        throw new Error(`Failed to read ${path.basename(filePath)}`);
-      }
-    };
 
     // Load content files
     let intro, outro;
     try {
-      intro = readFileSafe(path.join(sessionDir, 'intro.txt'));
-      outro = readFileSafe(path.join(sessionDir, 'outro.txt')) + 
-              `\n\n📚 Check out "${books().title}" at ${books().url}`;
+      intro = safeRead(join(sessionDir, 'intro.txt'));
+      const outroContent = existsSync(join(sessionDir, 'outro.txt'))
+        ? safeRead(join(sessionDir, 'outro.txt'))
+        : 'Thanks for listening!';
+      outro = `${outroContent}\n\n📚 Check out "${books().title}" at ${books().url}`;
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
 
-    // Process main chunks
-    let mainChunks;
+    // Process chunks
+    let chunkFiles;
     try {
-      mainChunks = fs.readdirSync(sessionDir)
+      chunkFiles = readdirSync(sessionDir)
         .filter(f => f.startsWith('raw-chunk-') && f.endsWith('.txt'))
-        .slice(0, MAX_CHUNKS)  // Limit number of chunks
         .sort((a, b) => {
           const numA = parseInt(a.match(/\d+/)[0], 10);
           const numB = parseInt(b.match(/\d+/)[0], 10);
           return numA - numB;
         })
-        .map(f => readFileSafe(path.join(sessionDir, f)));
+        .slice(0, MAX_CHUNKS);
     } catch (err) {
-      console.error('Error processing chunks:', err);
-      return res.status(500).json({ error: 'Failed to process content chunks' });
+      console.error('Directory read error:', err);
+      return res.status(500).json({ error: 'Failed to process chunks' });
     }
 
     // Format chunks
     let formattedChunks;
     try {
       formattedChunks = await Promise.all(
-        mainChunks.map(async (chunk, index) => {
-          const edited = await editAndFormat(chunk);
-          if (!edited || typeof edited !== 'string') {
-            throw new Error(`Invalid format for chunk ${index}`);
+        chunkFiles.map(async (file) => {
+          const content = safeRead(join(sessionDir, file));
+          const formatted = await editAndFormat(content);
+          if (!formatted || typeof formatted !== 'string') {
+            throw new Error(`Invalid chunk format: ${file}`);
           }
-          return edited.trim();
+          return formatted.trim();
         })
       );
     } catch (err) {
-      console.error('Error formatting chunks:', err);
-      return res.status(500).json({ error: 'Failed to format content' });
+      console.error('Chunk formatting error:', err);
+      return res.status(500).json({ error: 'Content formatting failed' });
     }
 
     // Compose final content
@@ -104,60 +114,78 @@ router.post('/', async (req, res) => {
 
     // Upload assets
     try {
-      // Upload chunks
-      const ttsChunkUrls = await Promise.all(
-        finalChunks.map(async (chunk, index) => {
-          const chunkPath = path.join(sessionDir, `chunk-${index}.txt`);
-          fs.writeFileSync(chunkPath, chunk);
-          return await uploadChunksToR2(
-            chunkPath,
-            `raw-text/${sessionId}/chunk-${index}.txt`
-          );
-        })
-      );
+      // Upload individual chunks
+      const uploadPromises = finalChunks.map(async (chunk, index) => {
+        const chunkPath = join(sessionDir, `processed-chunk-${index}.txt`);
+        writeFileSync(chunkPath, chunk);
+        return uploadChunksToR2(
+          chunkPath,
+          `chunks/${sessionId}/chunk-${index}.txt`
+        );
+      });
 
       // Upload transcript
-      const transcriptPath = path.join(sessionDir, 'transcript.txt');
-      fs.writeFileSync(transcriptPath, cleanedTranscript);
-      const transcriptUrl = await uploadToR2(
-        transcriptPath,
-        `transcripts/${sessionId}/transcript.txt`
+      const transcriptPath = join(sessionDir, 'final-transcript.txt');
+      writeFileSync(transcriptPath, cleanedTranscript);
+      uploadPromises.push(
+        uploadToR2(
+          transcriptPath,
+          `transcripts/${sessionId}/transcript.txt`
+        )
       );
 
-      // Generate metadata
-      const [titleRaw, description, keywordsRaw, artworkPrompt] = await Promise.all([
-        getTitleDescriptionPrompt(cleanedTranscript),
+      // Generate metadata in parallel
+      const metadataPromises = [
         getTitleDescriptionPrompt(cleanedTranscript),
         getSEOKeywordsPrompt(cleanedTranscript),
         getArtworkPrompt(cleanedTranscript)
+      ];
+
+      const [
+        ttsChunkUrls,
+        transcriptUrl,
+        [title, keywords, artworkPrompt]
+      ] = await Promise.all([
+        Promise.all(uploadPromises.slice(0, -1)),
+        uploadPromises[uploadPromises.length - 1],
+        Promise.all(metadataPromises)
       ]);
 
+      // Prepare response
       const tones = [
-        'cheeky', 'reflective', 'high-energy', 
-        'dry as hell', 'overly sincere', 'witty', 'oddly poetic'
+        'cheeky', 'reflective', 'high-energy',
+        'dry', 'sincere', 'witty', 'poetic'
       ];
 
       return res.json({
+        success: true,
         sessionId,
-        tone: tones[Math.floor(Math.random() * tones.length)],
-        title: formatTitle(titleRaw),
-        description,
-        keywords: normaliseKeywords(keywordsRaw),
-        artworkPrompt,
+        metadata: {
+          title: formatTitle(title),
+          description: title, // Reuse title as description
+          keywords: normaliseKeywords(keywords),
+          artworkPrompt,
+          tone: tones[Math.floor(Math.random() * tones.length)]
+        },
         sponsor: books(),
-        transcript: cleanedTranscript,
-        transcriptUrl,
-        ttsChunks: ttsChunkUrls
+        urls: {
+          transcript: transcriptUrl,
+          chunks: ttsChunkUrls
+        },
+        transcript: cleanedTranscript
       });
 
-    } catch (err) {
-      console.error('Upload error:', err.stack || err);
-      return res.status(500).json({ error: 'Failed to upload assets' });
+    } catch (uploadErr) {
+      console.error('Upload failed:', uploadErr.stack || uploadErr);
+      return res.status(500).json({ error: 'Asset upload failed' });
     }
 
   } catch (err) {
     console.error('Server error:', err.stack || err);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
