@@ -41,7 +41,7 @@ export default async function uploadToR2(filePath, key) {
 
   await s3.send(command);
 
-  const publicUrl = `${R2_PUBLIC_BASE_URL}/${key}`;
+  const publicUrl = `${R2_PUBLIC_BASE_URL}${R2_BUCKET_TRANSCRIPTS}${key}`;
   console.log(`✅ Uploaded transcript: ${publicUrl}`);
   return publicUrl;
 }
