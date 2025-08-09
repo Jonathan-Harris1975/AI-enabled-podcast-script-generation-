@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { openai } from '../utils/openai.js';
-import editAndFormat from '../utils/editAndFormat.js';
+import chunkText from '../utils/chunkText.js';
 import { getOutroPromptFull } from '../utils/promptTemplates.js';
 
 const router = express.Router();
@@ -24,17 +24,28 @@ router.post('/', async (req, res) => {
 
     let rawOutro = completion.choices[0].message.content.trim();
 
-    // Keep editAndFormat? Yes, it helps clean and polish the AI text (fixes spacing, removes unwanted chars).
-    const formattedOutro = await editAndFormat(rawOutro);
+    // Process the raw outro text with chunkText if needed
+    // Note: You might want to adjust this based on how chunkText should be used
+    const processedOutro = await chunkText(rawOutro);
 
     // Remove line breaks (flatten to single paragraph)
-    const finalOutro = formattedOutro.replace(/\n+/g, ' ');
+    const finalOutro = processedOutro.replace(/\n+/g, ' ');
 
     const storageDir = path.resolve('/mnt/data', sessionId);
     fs.mkdirSync(storageDir, { recursive: true });
     fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
 
     res.json({
+      sessionId,
+      outroPath: `${storageDir}/outro.txt`
+    });
+  } catch (err) {
+    console.error('❌ Outro generation failed:', err);
+    res.status(500).json({ error: 'Failed to generate outro' });
+  }
+});
+
+export default router;    res.json({
       sessionId,
       outroPath: `${storageDir}/outro.txt`
     });
