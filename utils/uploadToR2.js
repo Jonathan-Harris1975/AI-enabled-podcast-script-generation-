@@ -4,9 +4,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 const {
   R2_ACCESS_KEY,
   R2_SECRET_KEY,
-  R2_BUCKET,
   R2_ENDPOINT,
-  R2_PUBLIC_BASE_URL
 } = process.env;
 
 const s3 = new S3Client({
@@ -19,22 +17,31 @@ const s3 = new S3Client({
 });
 
 /**
- * Uploads a file from disk to R2 and returns the public URL.
- * 
+ * Upload file to R2 with explicit bucket & baseUrl
  * @param {string} localFilePath
  * @param {string} remoteKey
- * @returns {Promise<string>}
+ * @param {string} bucket
+ * @param {string} baseUrl
+ * @returns {Promise<string>} public URL
  */
-export default async function uploadToR2(localFilePath, remoteKey) {
+export default async function uploadToR2(localFilePath, remoteKey, bucket, baseUrl) {
   const fileBuffer = fs.readFileSync(localFilePath);
 
   const command = new PutObjectCommand({
-    Bucket: R2_BUCKET,
+    Bucket: bucket,
     Key: remoteKey,
     Body: fileBuffer,
     ContentType: 'text/plain'
   });
 
+  await s3.send(command);
+
+  // Normalize URL slashes
+  const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const cleanKey = remoteKey.startsWith('/') ? remoteKey : `/${remoteKey}`;
+
+  return `${cleanBaseUrl}${cleanKey}`;
+}
   await s3.send(command);
 
   // Ensure slash between base URL and remoteKey
