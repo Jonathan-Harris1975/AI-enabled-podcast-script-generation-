@@ -5,9 +5,9 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 const {
   R2_ACCESS_KEY,
   R2_SECRET_KEY,
-  R2_BUCKET,
+  R2_BUCKET_CHUNKS,
   R2_ENDPOINT,
-  R2_PUBLIC_BASE_URL // e.g. https://your-bucket.r2.cloudflarestorage.com
+  R2_PUBLIC_BASE_URL_1 // e.g. https://your-bucket.r2.cloudflarestorage.com
 } = process.env;
 
 const s3 = new S3Client({
@@ -38,6 +38,6 @@ export default async function uploadToR2(localFilePath, remoteKey) {
 
   await s3.send(command);
 
-  const publicUrl = `${R2_PUBLIC_BASE_URL}/${remoteKey}`;
+  const publicUrl = `${R2_PUBLIC_BASE_URL_1}${R2_BUCKET_CHUNKS}${remoteKey}`;
   return publicUrl;
 }
