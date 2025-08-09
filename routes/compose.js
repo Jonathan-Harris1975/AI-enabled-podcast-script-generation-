@@ -27,7 +27,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Intro or outro not found' });
     }
 
-    // Read intro & outro
+    // Read intro & outro (no editAndFormat applied)
     const intro = fs.readFileSync(introPath, 'utf-8').trim().replace(/\n+/g, ' ');
     const outro = fs.readFileSync(outroPath, 'utf-8').trim().replace(/\n+/g, ' ');
 
@@ -35,7 +35,7 @@ router.post('/', async (req, res) => {
     const allFiles = fs.readdirSync(storageDir);
     console.log('📄 Files in session folder:', allFiles);
 
-    // Get raw chunk files
+    // Get raw chunk files (sort numerically)
     const rawChunkFiles = allFiles
       .filter(f => f.startsWith('raw-chunk-'))
       .sort((a, b) => {
@@ -47,7 +47,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No raw chunk files found' });
     }
 
-    // Read and edit main chunks
+    // Read and edit ONLY main chunks
     const editedMainChunks = await Promise.all(
       rawChunkFiles.map(async f => {
         const filePath = path.join(storageDir, f);
@@ -74,8 +74,8 @@ router.post('/', async (req, res) => {
 
     // Generate prompts using podcastHelpers
     const titleDescriptionPrompt = getTitleDescriptionPrompt(transcript);
-    const seoPrompt = getSEOKeywordsPrompt('{{DESCRIPTION_PLACEHOLDER}}'); // Replace later when description is generated
-    const artworkPrompt = getArtworkPrompt('{{DESCRIPTION_PLACEHOLDER}}'); // Replace later when description is generated
+    const seoPrompt = getSEOKeywordsPrompt('{{DESCRIPTION_PLACEHOLDER}}');
+    const artworkPrompt = getArtworkPrompt('{{DESCRIPTION_PLACEHOLDER}}');
 
     // Save prompts to files
     fs.writeFileSync(path.join(storageDir, 'title-description-prompt.txt'), titleDescriptionPrompt);
@@ -92,55 +92,6 @@ router.post('/', async (req, res) => {
         seo: seoPrompt,
         artwork: artworkPrompt
       }
-    });
-
-  } catch (err) {
-    console.error('❌ Compose error:', err);
-    res.status(500).json({
-      error: 'Failed to compose final chunks',
-      details: err.message
-    });
-  }
-});
-
-export default router;        const getNum = f => parseInt(f.match(/\d+/)[0], 10);
-        return getNum(a) - getNum(b);
-      });
-
-    if (rawChunkFiles.length === 0) {
-      return res.status(400).json({ error: 'No raw chunk files found' });
-    }
-
-    // Read and edit main chunks
-    const editedMainChunks = await Promise.all(
-      rawChunkFiles.map(async f => {
-        const filePath = path.join(storageDir, f);
-        const content = fs.readFileSync(filePath, 'utf-8').trim();
-        if (!content) throw new Error(`Empty chunk file: ${f}`);
-        const edited = await editAndFormat(content);
-        return (typeof edited === 'string' ? edited : '').replace(/\n+/g, ' ');
-      })
-    );
-
-    // Merge all into transcript
-    const transcript = [intro, ...editedMainChunks, outro].join(' ');
-
-    // Split into ≤ 4500 character chunks
-    const finalChunks = splitPlainText(transcript, 4500);
-
-    // Save transcript
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
-    fs.writeFileSync(transcriptPath, transcript);
-
-    // Save chunks JSON
-    const finalChunksPath = path.join(storageDir, 'final-chunks.json');
-    fs.writeFileSync(finalChunksPath, JSON.stringify(finalChunks, null, 2));
-
-    res.json({
-      sessionId,
-      transcriptPath,
-      finalChunksPath,
-      chunks: finalChunks
     });
 
   } catch (err) {
