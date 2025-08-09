@@ -124,7 +124,7 @@ router.post('/', async (req, res) => {
 });
 
 export default router;    throw new Error(`Failed to read: ${filePath.split('/').pop()}`);
-  }
+  
 };
 
 const validateSessionId = (id) => {
