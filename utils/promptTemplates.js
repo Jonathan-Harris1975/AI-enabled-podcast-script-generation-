@@ -1,121 +1,51 @@
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import OpenAI from 'openai';
-import splitPlainText from '../utils/splitPlainText.js';
-import editAndFormat from '../utils/editAndFormat.js';
-import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
-import uploadToR2 from '../utils/uploadToR2.js';
-import {
-  getTitleDescriptionPrompt,
-  getSEOKeywordsPrompt,
-  getArtworkPrompt,
-} from '../utils/podcastHelpers.js';
+// utils/promptTemplates.js
+import getSponsor from './getSponsor.js';
+import generateCta from './generateCta.js';
+import { getRandomTone } from './toneSetter.js';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const episodeTone = getRandomTone();  // runs once per module load, sets tone for whole episode
 
-async function askOpenAI(prompt) {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
-  });
-  return response.choices[0].message.content;
+export function getIntroPrompt({ weatherSummary, turingQuote }) {
+  return `You're the deadpan, culturally-savvy British Gen X host of the podcast *Turing's Torch: AI Weekly*.  
+Tone for this episode: ${episodeTone}.
+
+Kick off with a witty, slightly cynical very small remark about the recent UK weather: ${weatherSummary}  
+Then drop this quote from Alan Turing — but deliver it like it matters: "${turingQuote}"  
+Introduce yourself confidently with the podcast name included exactly: “I’m Jonathan Harris, your host of Turing's Torch: AI Weekly, your AI wrangler, and the one who reads the news so you don’t have to.”  
+Skip the fluff. No episode numbers. No fake hype. Keep it clever, offbeat, and properly London.  
+Do not include any political remarks.  
+Make sure the podcast name 'Turing's Torch: AI Weekly' is clearly front and centre in this intro.  
+Output must be plain text with no formatting of any kind.`;
 }
 
-const router = express.Router();
+export function getMainPrompt(articleTextArray) {
+  return `You’re narrating an AI podcast with the weary dry wit of a Londoner who’s been through every buzzword storm and seen the nonsense cycle too many times.  
+Tone for this episode: ${episodeTone}.
 
-router.post('/', async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    if (!sessionId) {
-      return res.status(400).json({ error: 'Missing sessionId' });
-    }
+For each story, produce a podcast script chunk that:
 
-    const storageDir = path.resolve('/mnt/data', sessionId);
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
+- Hits between 3000 and 4000 characters, including spaces and punctuation. No excuses, no shortcuts.
+- Opens with a deadpan, clever jab or anti-hype joke — something that’d get a smirk down the pub.
+- Explains the topic like you’re chatting to your smartest mate, straight and clear, no jargon overload.
+- Flows naturally, sounding human, never repetitive or robotic.
+- Keeps the sarcasm and wit alive throughout — make it dry, make it sharp.
+- If the story’s too thin, pad it with relevant context or sarcastic commentary — but keep it tight, keep it engaging.
+- No fluff, no filler. Stick to the character count like it’s your last pint.
+- Output must be plain text with no formatting at all.
 
-    if (!fs.existsSync(transcriptPath)) {
-      return res.status(404).json({ error: 'Transcript file not found' });
-    }
+Content:
+${articleTextArray.join('\n')}`;
+}
 
-    // Read transcript from disk
-    let transcriptText = fs.readFileSync(transcriptPath, 'utf-8');
+export async function getOutroPromptFull() {
+  const sponsor = await getSponsor();
+  const title = sponsor?.title ?? 'an amazing ebook';
+  const url = sponsor?.url ?? 'https://example.com';
 
-    // Clean/format transcript if needed
-    transcriptText = await editAndFormat(transcriptText);
-    if (!transcriptText || transcriptText.trim().length === 0) {
-      return res.status(400).json({ error: 'Transcript is empty after formatting' });
-    }
+  const cta = generateCta(sponsor);
 
-    // Save cleaned transcript back (optional, keeps consistency)
-    fs.writeFileSync(transcriptPath, transcriptText, 'utf-8');
+  return `You're the British Gen X host of the podcast *Turing's Torch: AI Weekly*.  
+Tone for this episode: ${episodeTone}.
 
-    // Split transcript into chunks (4500 chars max)
-    const chunks = splitPlainText(transcriptText, 4500);
-
-    // Upload full transcript to R2
-    const transcriptKey = `final-text/${sessionId}/final-transcript.txt`;
-    const transcriptUrl = await uploadToR2(transcriptPath, transcriptKey);
-
-    // Upload each chunk to R2
-    const chunkUrls = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const tempFilePath = path.join(os.tmpdir(), `upload-chunk-${sessionId}-${i + 1}.txt`);
-      fs.writeFileSync(tempFilePath, chunk, 'utf-8');
-
-      const key = `raw-text/${sessionId}/chunk-${i + 1}.txt`;
-      const url = await uploadChunksToR2(tempFilePath, key);
-
-      fs.unlinkSync(tempFilePath);
-      chunkUrls.push(url);
-    }
-
-    // Generate title & description
-    const titleDescPrompt = getTitleDescriptionPrompt(transcriptText);
-    const titleDescResponse = await askOpenAI(titleDescPrompt);
-
-    let title, description;
-    try {
-      ({ title, description } = JSON.parse(titleDescResponse));
-    } catch (err) {
-      return res.status(500).json({ error: 'Failed to parse AI title/description JSON' });
-    }
-    if (!title || !description) {
-      return res.status(500).json({ error: 'AI generated title or description missing' });
-    }
-
-    // Generate SEO keywords
-    const seoPrompt = getSEOKeywordsPrompt(description);
-    const seoKeywordsRaw = await askOpenAI(seoPrompt);
-    const seoKeywords = seoKeywordsRaw.trim();
-
-    // Generate artwork prompt
-    const artworkPrompt = getArtworkPrompt(description);
-    const artworkDescription = (await askOpenAI(artworkPrompt)).trim();
-
-    // Respond with everything
-    res.json({
-      sessionId,
-      transcriptUrl,
-      chunkUrls,
-      chunks,
-      fullTranscript: transcriptText,
-      podcast: {
-        title,
-        description,
-        seoKeywords,
-        artworkPrompt: artworkDescription,
-      },
-    });
-  } catch (error) {
-    console.error('Compose error:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
-  }
-});
-
-export default router;
+You're signing off the show with a witty, reflective outro that firmly reminds listeners this is *Turing's Torch: AI Weekly*. Reference this ebook confidently and casually as if you wrote it yourself: "${title}" (link: ${url}). Keep the tone dry, confident, informal, and personal. End with a clear call to action: ${cta}. Output should be plain text with no paragraph breaks and absolutely no formatting.`;
+}
