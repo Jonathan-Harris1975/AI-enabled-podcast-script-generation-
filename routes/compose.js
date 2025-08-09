@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
+import uploadchunksToR2 from '../utils/uploadchunksToR2.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 import editAndFormat from '../utils/editAndFormat.js';
 import getRandomSponsor from '../utils/books.js';
