@@ -11,7 +11,6 @@ import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
   getArtworkPrompt,
-  getMainPrompt, // keep only if you still use it to generate prompt
 } from '../utils/podcastHelpers.js';
 import { getRandomTone } from '../utils/toneSetter.js';
 
@@ -39,17 +38,15 @@ router.post('/', async (req, res) => {
 
     const storageDir = path.resolve('/mnt/data', sessionId);
 
-    // Paths for intro, main, outro - already generated previously
+    // Read previously created intro, main, outro texts
     const introPath = path.join(storageDir, 'intro.txt');
     const mainPath = path.join(storageDir, 'main.txt');
     const outroPath = path.join(storageDir, 'outro.txt');
 
-    // Verify all parts exist
     if (!fs.existsSync(introPath) || !fs.existsSync(mainPath) || !fs.existsSync(outroPath)) {
       return res.status(404).json({ error: 'One or more transcript parts not found (intro, main, outro)' });
     }
 
-    // Read raw parts
     const introText = fs.readFileSync(introPath, 'utf-8').trim();
     let mainText = fs.readFileSync(mainPath, 'utf-8').trim();
     const outroText = fs.readFileSync(outroPath, 'utf-8').trim();
@@ -60,21 +57,20 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Main script is empty after formatting' });
     }
 
-    // Combine into full transcript
+    // Combine all into final transcript
     const fullTranscript = [introText, mainText, outroText].join('\n\n');
 
-    // Save full transcript locally
     const finalTranscriptPath = path.join(storageDir, 'final-full-transcript.txt');
     fs.writeFileSync(finalTranscriptPath, fullTranscript, 'utf-8');
 
-    // Split full transcript into chunks (max 4500 chars)
+    // Split transcript into chunks of max 4500 characters
     const chunks = splitPlainText(fullTranscript, 4500);
 
-    // Upload full transcript to R2
+    // Upload full transcript
     const transcriptKey = `final-text/${sessionId}/final-full-transcript.txt`;
     const transcriptUrl = await uploadToR2(finalTranscriptPath, transcriptKey);
 
-    // Upload chunks to R2
+    // Upload chunks
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -88,7 +84,7 @@ router.post('/', async (req, res) => {
       chunkUrls.push(url);
     }
 
-    // Generate title & description from full transcript
+    // Generate title and description from full transcript
     const titleDescPrompt = getTitleDescriptionPrompt(fullTranscript);
     const titleDescResponse = await askOpenAI(titleDescPrompt);
     let title, description;
@@ -110,10 +106,9 @@ router.post('/', async (req, res) => {
     const artworkPrompt = getArtworkPrompt(description);
     const artworkDescription = (await askOpenAI(artworkPrompt)).trim();
 
-    // Pick a random tone (optional)
+    // Pick a random tone for fun
     const tone = getRandomTone();
 
-    // Respond with all results
     res.json({
       sessionId,
       transcriptUrl,
