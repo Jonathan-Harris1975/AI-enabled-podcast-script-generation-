@@ -1,6 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import editAndFormat from '../utils/editAndFormat.js';
 import splitPlainText from '../utils/splitPlainText.js';
 import {
@@ -106,13 +107,22 @@ router.post('/', async (req, res) => {
     // Upload chunks and collect URLs
     let chunkUrls = [];
     try {
-      chunkUrls = await Promise.all(
-        finalChunks.map(async (chunk, index) => {
-          const key = `final-text/${sessionId}/chunk-${index + 1}.txt`;
-          await uploadChunksToR2(chunk, key); // Upload text chunk to R2
-          return `${process.env.R2_PUBLIC_BASE_URL_1}/${process.env.R2_BUCKET_CHUNKS}/${key}`;
-        })
-      );
+      for (let i = 0; i < finalChunks.length; i++) {
+        const chunk = finalChunks[i];
+        const key = `final-text/${sessionId}/chunk-${i + 1}.txt`;
+        const tempFilePath = path.join(os.tmpdir(), `upload-chunk-${sessionId}-${i + 1}.txt`);
+
+        // Write chunk to temp file
+        fs.writeFileSync(tempFilePath, chunk, 'utf-8');
+
+        // Upload the temp file
+        await uploadChunksToR2(tempFilePath, key);
+
+        // Delete temp file after upload
+        fs.unlinkSync(tempFilePath);
+
+        chunkUrls.push(`${process.env.R2_PUBLIC_BASE_URL_1}/${process.env.R2_BUCKET_CHUNKS}/${key}`);
+      }
     } catch (uploadErr) {
       console.error('❌ Upload chunks to R2 failed:', uploadErr);
       return res.status(500).json({ error: 'Upload chunks to R2 failed', details: uploadErr.message });
@@ -133,7 +143,7 @@ router.post('/', async (req, res) => {
       artworkPrompt: artworkPromptFinal,
       fullTranscript: transcript,
       chunks: finalChunks,
-      chunkUrls,         // <-- chunk URLs here
+      chunkUrls,
       transcriptUrl
     });
   } catch (err) {
