@@ -191,4 +191,111 @@ router.post('/', async (req, res) => {
     }
 
     // Compose final content
-    const finalChunks = [intr
+    const finalChunks = [intro, ...formattedChunks, outro];
+    const fullTranscript = finalChunks.join('\n\n');
+    const cleanedTranscript = cleanTranscript(fullTranscript);
+
+    // Upload assets with concurrency control
+    try {
+      console.log('Starting asset uploads...');
+      
+      // Prepare all upload operations
+      const uploadOperations = [
+        // Upload individual chunks
+        ...finalChunks.map(async (chunk, index) => {
+          const chunkPath = path.join(sessionDir, `processed-chunk-${index}.txt`);
+          await fs.writeFile(chunkPath, chunk);
+          return uploadchunksToR2(chunkPath, `chunks/${sessionId}/chunk-${index}.txt`);
+        }),
+        
+        // Upload full transcript
+        (async () => {
+          const transcriptPath = path.join(sessionDir, 'final-transcript.txt');
+          await fs.writeFile(transcriptPath, cleanedTranscript);
+          return uploadToR2(transcriptPath, `transcripts/${sessionId}/transcript.txt`);
+        })()
+      ];
+
+      // Generate metadata in parallel
+      const metadataPromises = Promise.all([
+        getTitleDescriptionPrompt(cleanedTranscript),
+        getSEOKeywordsPrompt(cleanedTranscript),
+        getArtworkPrompt(cleanedTranscript)
+      ]);
+
+      // Execute all operations with progress
+      const [uploadResults, [title, keywords, artworkPrompt]] = await Promise.all([
+        Promise.all(uploadOperations),
+        metadataPromises
+      ]);
+
+      // Extract URLs (last item is transcript)
+      const ttsChunkUrls = uploadResults.slice(0, -1);
+      const transcriptUrl = uploadResults[uploadResults.length - 1];
+
+      // Prepare response
+      const tones = [
+        'cheeky', 'reflective', 'high-energy', 
+        'dry', 'sincere', 'witty', 'poetic'
+      ];
+      const tone = tones[Math.floor(Math.random() * tones.length)];
+
+      const processingTime = ((Date.now() - startTime)/1000).toFixed(2);
+      console.log(`Completed processing in ${processingTime}s`);
+
+      return res.json({
+        success: true,
+        sessionId,
+        metadata: {
+          title: formatTitle(title),
+          description: title,
+          keywords: normaliseKeywords(keywords),
+          artworkPrompt,
+          tone,
+        },
+        sponsor,
+        urls: {
+          transcript: transcriptUrl,
+          chunks: ttsChunkUrls,
+        },
+        transcript: cleanedTranscript,
+        stats: {
+          chunksProcessed: chunkFiles.length,
+          transcriptLength: cleanedTranscript.length,
+          processingTime: `${processingTime}s`
+        }
+      });
+
+    } catch (uploadErr) {
+      console.error('Upload failed:', uploadErr);
+      return res.status(500).json({ 
+        error: 'Asset upload failed',
+        system: 'R2 storage',
+        details: process.env.NODE_ENV === 'development' ? uploadErr.message : undefined
+      });
+    }
+
+  } catch (err) {
+    console.error('Unexpected error:', err);
+    return res.status(500).json({
+      error: 'Internal server error',
+      session: sessionDir ? path.basename(sessionDir) : 'unknown',
+      trace: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  } finally {
+    // Clean up session directory after processing
+    if (sessionDir && process.env.NODE_ENV !== 'development') {
+      try {
+        await fs.rm(sessionDir, { recursive: true, force: true });
+        console.log(`Cleaned up session directory: ${sessionDir}`);
+      } catch (cleanupErr) {
+        console.error('Failed to clean up session directory:', cleanupErr);
+      }
+    }
+  }
+});
+
+// Add cleanup interval
+setInterval(cleanupOldSessions, SESSION_TIMEOUT_MS);
+
+export default router;
