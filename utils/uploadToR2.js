@@ -1,13 +1,12 @@
-// utils/uploadToR2.js
 import fs from 'fs';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const {
   R2_ACCESS_KEY,
   R2_SECRET_KEY,
-  R2_BUCKET_CHUNKS,
+  R2_BUCKET,
   R2_ENDPOINT,
-  R2_PUBLIC_BASE_URL_1 // e.g. https://your-bucket.r2.cloudflarestorage.com
+  R2_PUBLIC_BASE_URL
 } = process.env;
 
 const s3 = new S3Client({
@@ -22,9 +21,9 @@ const s3 = new S3Client({
 /**
  * Uploads a file from disk to R2 and returns the public URL.
  * 
- * @param {string} localFilePath - Full path to local file
- * @param {string} remoteKey - Key to use in R2 (e.g. 'raw-text/123/chunk-1.txt')
- * @returns {Promise<string>} - Public R2 URL of the uploaded file
+ * @param {string} localFilePath
+ * @param {string} remoteKey
+ * @returns {Promise<string>}
  */
 export default async function uploadToR2(localFilePath, remoteKey) {
   const fileBuffer = fs.readFileSync(localFilePath);
@@ -38,6 +37,12 @@ export default async function uploadToR2(localFilePath, remoteKey) {
 
   await s3.send(command);
 
-  const publicUrl = `${R2_PUBLIC_BASE_URL_1}${R2_BUCKET_CHUNKS}${remoteKey}`;
+  // Ensure slash between base URL and remoteKey
+  const baseUrl = R2_PUBLIC_BASE_URL.endsWith('/')
+    ? R2_PUBLIC_BASE_URL.slice(0, -1)
+    : R2_PUBLIC_BASE_URL;
+  const keyPath = remoteKey.startsWith('/') ? remoteKey : `/${remoteKey}`;
+
+  const publicUrl = `${baseUrl}${keyPath}`;
   return publicUrl;
 }
