@@ -11,10 +11,18 @@ import {
 
 const router = express.Router();
 
+// Helper to run a prompt via editAndFormat (or whatever your LLM call is)
+async function runPrompt(prompt) {
+  const result = await editAndFormat(prompt); // Assuming editAndFormat sends to the LLM
+  if (typeof result === 'string') {
+    return result.trim();
+  }
+  return '';
+}
+
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
-
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
@@ -65,39 +73,50 @@ router.post('/', async (req, res) => {
     const finalChunks = splitPlainText(transcript, 4500);
 
     // Save transcript
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
-    fs.writeFileSync(transcriptPath, transcript);
+    fs.writeFileSync(path.join(storageDir, 'final-transcript.txt'), transcript);
 
     // Save chunks JSON
-    const finalChunksPath = path.join(storageDir, 'final-chunks.json');
-    fs.writeFileSync(finalChunksPath, JSON.stringify(finalChunks, null, 2));
+    fs.writeFileSync(path.join(storageDir, 'final-chunks.json'), JSON.stringify(finalChunks, null, 2));
 
-    // Generate prompts using podcastHelpers
-    const titleDescriptionPrompt = getTitleDescriptionPrompt(transcript);
-    const seoPrompt = getSEOKeywordsPrompt('{{DESCRIPTION_PLACEHOLDER}}');
-    const artworkPrompt = getArtworkPrompt('{{DESCRIPTION_PLACEHOLDER}}');
+    // ---- Generate actual final outputs ----
+    // Get title & description JSON
+    const titleDescriptionRaw = await runPrompt(getTitleDescriptionPrompt(transcript));
+    let title = '';
+    let description = '';
+    try {
+      const parsed = JSON.parse(titleDescriptionRaw);
+      title = parsed.title || '';
+      description = parsed.description || '';
+    } catch {
+      console.warn('⚠ Could not parse title/description JSON, raw output:', titleDescriptionRaw);
+    }
+
+    // Get SEO keywords from description
+    const seoKeywords = await runPrompt(getSEOKeywordsPrompt(description));
+
+    // Get artwork prompt from description
+    const artworkPromptFinal = await runPrompt(getArtworkPrompt(description));
 
     // Save prompts to files
-    fs.writeFileSync(path.join(storageDir, 'title-description-prompt.txt'), titleDescriptionPrompt);
-    fs.writeFileSync(path.join(storageDir, 'seo-prompt.txt'), seoPrompt);
-    fs.writeFileSync(path.join(storageDir, 'artwork-prompt.txt'), artworkPrompt);
+    fs.writeFileSync(path.join(storageDir, 'title.txt'), title);
+    fs.writeFileSync(path.join(storageDir, 'description.txt'), description);
+    fs.writeFileSync(path.join(storageDir, 'seo-keywords.txt'), seoKeywords);
+    fs.writeFileSync(path.join(storageDir, 'artwork-prompt.txt'), artworkPromptFinal);
 
     res.json({
       sessionId,
-      transcriptPath,
-      finalChunksPath,
-      chunks: finalChunks,
-      prompts: {
-        titleDescription: titleDescriptionPrompt,
-        seo: seoPrompt,
-        artwork: artworkPrompt
-      }
+      title,
+      description,
+      seoKeywords,
+      artworkPrompt: artworkPromptFinal,
+      fullTranscript: transcript,
+      chunks: finalChunks
     });
 
   } catch (err) {
     console.error('❌ Compose error:', err);
     res.status(500).json({
-      error: 'Failed to compose final chunks',
+      error: 'Failed to compose final outputs',
       details: err.message
     });
   }
