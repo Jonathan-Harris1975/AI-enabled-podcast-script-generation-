@@ -10,6 +10,7 @@ import {
 } from '../utils/podcastHelpers.js';
 
 import uploadToR2 from '../utils/uploadToR2.js';
+import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
 
 const router = express.Router();
 
@@ -24,8 +25,10 @@ async function runPrompt(prompt) {
 router.post('/', async (req, res) => {
   try {
     console.log('Env vars for R2:', {
-      bucket: process.env.R2_BUCKET_TRANSCRIPTS,
-      baseUrl: process.env.R2_PUBLIC_BASE_URL,
+      transcriptBucket: process.env.R2_BUCKET_TRANSCRIPTS,
+      transcriptBaseUrl: process.env.R2_PUBLIC_BASE_URL,
+      chunksBucket: process.env.R2_BUCKET_CHUNKS,
+      chunksBaseUrl: process.env.R2_PUBLIC_BASE_URL_1,
       accessKey: process.env.R2_ACCESS_KEY ? 'set' : 'missing',
       endpoint: process.env.R2_ENDPOINT
     });
@@ -58,6 +61,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No raw chunk files found' });
     }
 
+    // Edit chunks
     const editedMainChunks = await Promise.all(
       rawChunkFiles.map(async f => {
         const filePath = path.join(storageDir, f);
@@ -71,11 +75,11 @@ router.post('/', async (req, res) => {
     const transcript = [intro, ...editedMainChunks, outro].join(' ');
     const finalChunks = splitPlainText(transcript, 4500);
 
-    // Save final transcript locally
+    // Save transcript locally
     const transcriptPath = path.join(storageDir, 'final-transcript.txt');
     fs.writeFileSync(transcriptPath, transcript);
 
-    // Save final chunks locally
+    // Save chunks JSON locally
     const chunksPath = path.join(storageDir, 'final-chunks.json');
     fs.writeFileSync(chunksPath, JSON.stringify(finalChunks, null, 2));
 
@@ -94,23 +98,34 @@ router.post('/', async (req, res) => {
     const seoKeywords = await runPrompt(getSEOKeywordsPrompt(description));
     const artworkPromptFinal = await runPrompt(getArtworkPrompt(description));
 
-    // Upload transcript to R2 with error handling
+    // Upload transcript to R2
     let transcriptUrl = '';
     try {
       console.log('Uploading transcript to R2...');
       transcriptUrl = await uploadToR2(
         transcriptPath,
-        `final-text/${sessionId}/final-transcript.txt`,
-        process.env.R2_BUCKET_TRANSCRIPTS,
-        process.env.R2_PUBLIC_BASE_URL
+        `final-text/${sessionId}/final-transcript.txt`
       );
-      console.log('Transcript uploaded successfully:', transcriptUrl);
-    } catch (uploadErr) {
-      console.error('❌ Upload to R2 failed:', uploadErr);
-      return res.status(500).json({
-        error: 'Upload to R2 failed',
-        details: uploadErr.message || String(uploadErr)
-      });
+      console.log('Transcript uploaded:', transcriptUrl);
+    } catch (err) {
+      console.error('Upload to R2 failed:', err);
+      return res.status(500).json({ error: 'Upload to R2 failed', details: err.message });
+    }
+
+    // Upload chunks to R2
+    const chunkUrls = [];
+    for (const chunkFile of rawChunkFiles) {
+      const localPath = path.join(storageDir, chunkFile);
+      const remoteKey = `raw-text/${sessionId}/${chunkFile}`;
+      try {
+        const url = await uploadChunksToR2(localPath, remoteKey);
+        console.log(`Chunk uploaded: ${chunkFile} → ${url}`);
+        chunkUrls.push({ filename: chunkFile, url });
+      } catch (err) {
+        console.error(`Failed to upload chunk ${chunkFile}:`, err);
+        // You can choose to continue uploading other chunks or abort here
+        return res.status(500).json({ error: `Failed to upload chunk ${chunkFile}`, details: err.message });
+      }
     }
 
     // Save prompts to files locally
@@ -119,7 +134,7 @@ router.post('/', async (req, res) => {
     fs.writeFileSync(path.join(storageDir, 'seo-keywords.txt'), seoKeywords);
     fs.writeFileSync(path.join(storageDir, 'artwork-prompt.txt'), artworkPromptFinal);
 
-    // Final JSON response
+    // Send final JSON response
     res.json({
       sessionId,
       title,
@@ -128,15 +143,13 @@ router.post('/', async (req, res) => {
       artworkPrompt: artworkPromptFinal,
       fullTranscript: transcript,
       chunks: finalChunks,
-      transcriptUrl
+      transcriptUrl,
+      chunkUrls
     });
 
   } catch (err) {
-    console.error('❌ Compose error:', err);
-    res.status(500).json({
-      error: 'Failed to compose final outputs',
-      details: err.message || String(err)
-    });
+    console.error('Compose error:', err);
+    res.status(500).json({ error: 'Failed to compose final outputs', details: err.message });
   }
 });
 
