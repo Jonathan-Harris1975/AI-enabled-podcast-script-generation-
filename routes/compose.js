@@ -10,7 +10,6 @@ import {
 } from '../utils/podcastHelpers.js';
 
 import uploadToR2 from '../utils/uploadToR2.js';
-import uploadchunksToR2 from '../utils/uploadchunksToR2.js';
 
 const router = express.Router();
 
@@ -61,25 +60,30 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No raw chunk files found' });
     }
 
-    // Edit chunks
+    // Clean chunk numbers like "33. " from the start of each chunk before editing
     const editedMainChunks = await Promise.all(
       rawChunkFiles.map(async f => {
         const filePath = path.join(storageDir, f);
         const content = fs.readFileSync(filePath, 'utf-8').trim();
         if (!content) throw new Error(`Empty chunk file: ${f}`);
-        const edited = await editAndFormat(content);
+
+        // Remove leading chunk number, e.g. "33. "
+        const cleanedContent = content.replace(/^\d+\.\s*/, '');
+
+        const edited = await editAndFormat(cleanedContent);
         return (typeof edited === 'string' ? edited : '').replace(/\n+/g, ' ');
       })
     );
 
     const transcript = [intro, ...editedMainChunks, outro].join(' ');
+
     const finalChunks = splitPlainText(transcript, 4500);
 
-    // Save transcript locally
+    // Save final transcript locally
     const transcriptPath = path.join(storageDir, 'final-transcript.txt');
     fs.writeFileSync(transcriptPath, transcript);
 
-    // Save chunks JSON locally
+    // Save final chunks locally
     const chunksPath = path.join(storageDir, 'final-chunks.json');
     fs.writeFileSync(chunksPath, JSON.stringify(finalChunks, null, 2));
 
@@ -106,35 +110,22 @@ router.post('/', async (req, res) => {
         transcriptPath,
         `final-text/${sessionId}/final-transcript.txt`
       );
-      console.log('Transcript uploaded:', transcriptUrl);
-    } catch (err) {
-      console.error('Upload to R2 failed:', err);
-      return res.status(500).json({ error: 'Upload to R2 failed', details: err.message });
+      console.log('Transcript uploaded successfully:', transcriptUrl);
+    } catch (uploadErr) {
+      console.error('❌ Upload to R2 failed:', uploadErr);
+      return res.status(500).json({
+        error: 'Upload to R2 failed',
+        details: uploadErr.message || String(uploadErr)
+      });
     }
 
-    // Upload chunks to R2
-    const chunkUrls = [];
-    for (const chunkFile of rawChunkFiles) {
-      const localPath = path.join(storageDir, chunkFile);
-      const remoteKey = `raw-text/${sessionId}/${chunkFile}`;
-      try {
-        const url = await uploadchunksToR2(localPath, remoteKey);
-        console.log(`Chunk uploaded: ${chunkFile} → ${url}`);
-        chunkUrls.push({ filename: chunkFile, url });
-      } catch (err) {
-        console.error(`Failed to upload chunk ${chunkFile}:`, err);
-        // You can choose to continue uploading other chunks or abort here
-        return res.status(500).json({ error: `Failed to upload chunk ${chunkFile}`, details: err.message });
-      }
-    }
-
-    // Save prompts to files locally
+    // Save prompt outputs locally
     fs.writeFileSync(path.join(storageDir, 'title.txt'), title);
     fs.writeFileSync(path.join(storageDir, 'description.txt'), description);
     fs.writeFileSync(path.join(storageDir, 'seo-keywords.txt'), seoKeywords);
     fs.writeFileSync(path.join(storageDir, 'artwork-prompt.txt'), artworkPromptFinal);
 
-    // Send final JSON response
+    // Return JSON response
     res.json({
       sessionId,
       title,
@@ -143,13 +134,15 @@ router.post('/', async (req, res) => {
       artworkPrompt: artworkPromptFinal,
       fullTranscript: transcript,
       chunks: finalChunks,
-      transcriptUrl,
-      chunkUrls
+      transcriptUrl
     });
 
   } catch (err) {
-    console.error('Compose error:', err);
-    res.status(500).json({ error: 'Failed to compose final outputs', details: err.message });
+    console.error('❌ Compose error:', err);
+    res.status(500).json({
+      error: 'Failed to compose final outputs',
+      details: err.message || String(err)
+    });
   }
 });
 
