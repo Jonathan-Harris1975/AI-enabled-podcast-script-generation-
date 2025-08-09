@@ -45,14 +45,4 @@ router.post('/', async (req, res) => {
   }
 });
 
-export default router;    res.json({
-      sessionId,
-      outroPath: `${storageDir}/outro.txt`
-    });
-  } catch (err) {
-    console.error('❌ Outro generation failed:', err);
-    res.status(500).json({ error: 'Failed to generate outro' });
-  }
-});
-
 export default router;
