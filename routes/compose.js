@@ -10,7 +10,7 @@ import {
 } from '../utils/podcastHelpers.js';
 
 import uploadToR2 from '../utils/uploadToR2.js';
-import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
+import uploadchunksToR2 from '../utils/uploadchunksToR2.js';
 
 const router = express.Router();
 
