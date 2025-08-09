@@ -1,16 +1,16 @@
-// utils/uploadChunksToR2.js
+// utils/uploadToR2.js
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const {
   R2_ACCESS_KEY,
   R2_SECRET_KEY,
-  R2_BUCKET_CHUNKS,
+  R2_BUCKET_TRANSCRIPTS,
   R2_ENDPOINT,
-  R2_PUBLIC_BASE_URL_1
+  R2_PUBLIC_BASE_URL
 } = process.env;
 
-if (!R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET_CHUNKS || !R2_ENDPOINT || !R2_PUBLIC_BASE_URL_1) {
-  throw new Error('Missing one or more required R2 environment variables for chunks.');
+if (!R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET_TRANSCRIPTS || !R2_ENDPOINT || !R2_PUBLIC_BASE_URL) {
+  throw new Error('Missing one or more required R2 environment variables for transcripts.');
 }
 
 const s3 = new S3Client({
@@ -23,17 +23,17 @@ const s3 = new S3Client({
 });
 
 /**
- * Upload a chunk file to R2
+ * Upload transcript file to R2
  * @param {string} filePath - Local path to file
  * @param {string} key - Destination key in bucket
- * @returns {Promise<string>} - Public URL of uploaded chunk
+ * @returns {Promise<string>} - Public URL of uploaded transcript
  */
-export default async function uploadChunksToR2(filePath, key) {
+export default async function uploadToR2(filePath, key) {
   const fs = await import('fs');
   const fileContent = fs.readFileSync(filePath);
 
   const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_CHUNKS,
+    Bucket: R2_BUCKET_TRANSCRIPTS,
     Key: key,
     Body: fileContent,
     ContentType: 'text/plain'
@@ -41,7 +41,7 @@ export default async function uploadChunksToR2(filePath, key) {
 
   await s3.send(command);
 
-  const publicUrl = `${R2_PUBLIC_BASE_URL_1}/${key}`;
-  console.log(`✅ Uploaded chunk: ${publicUrl}`);
+  const publicUrl = `${R2_PUBLIC_BASE_URL}/${key}`;
+  console.log(`✅ Uploaded transcript: ${publicUrl}`);
   return publicUrl;
 }
