@@ -7,7 +7,11 @@ import splitPlainText from '../utils/splitPlainText.js';
 import editAndFormat from '../utils/editAndFormat.js';
 import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
 import uploadToR2 from '../utils/uploadToR2.js';
-import { getTitleDescriptionPrompt, getSEOKeywordsPrompt, getArtworkPrompt } from '../utils/podcastHelpers.js';
+import {
+  getTitleDescriptionPrompt,
+  getSEOKeywordsPrompt,
+  getArtworkPrompt,
+} from '../utils/podcastHelpers.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -24,41 +28,40 @@ async function askOpenAI(prompt) {
 
 const router = express.Router();
 
-// Optional: simple GET to verify route is live
-router.get('/', (req, res) => {
-  res.json({ message: 'Compose route is alive' });
-});
-
-// Correct POST route at root since mounted at '/compose'
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, rawText } = req.body;
-    if (!sessionId || !rawText) {
-      return res.status(400).json({ error: 'Missing sessionId or rawText' });
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    // Prepare local storage folder
     const storageDir = path.resolve('/mnt/data', sessionId);
-    if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
 
-    // 1. Edit & clean transcript
-    const editedText = await editAndFormat(rawText);
-    if (!editedText || editedText.trim().length === 0) {
+    if (!fs.existsSync(transcriptPath)) {
+      return res.status(404).json({ error: 'Transcript file not found' });
+    }
+
+    // Read transcript from disk
+    let transcriptText = fs.readFileSync(transcriptPath, 'utf-8');
+
+    // Clean/format transcript if needed
+    transcriptText = await editAndFormat(transcriptText);
+    if (!transcriptText || transcriptText.trim().length === 0) {
       return res.status(400).json({ error: 'Transcript is empty after formatting' });
     }
 
-    // 2. Save full transcript locally
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
-    fs.writeFileSync(transcriptPath, editedText, 'utf-8');
+    // Save cleaned transcript back (optional, keeps consistency)
+    fs.writeFileSync(transcriptPath, transcriptText, 'utf-8');
 
-    // 3. Split transcript into chunks
-    const chunks = splitPlainText(editedText, 4500);
+    // Split transcript into chunks (4500 chars max)
+    const chunks = splitPlainText(transcriptText, 4500);
 
-    // 4. Upload full transcript to R2
+    // Upload full transcript to R2
     const transcriptKey = `final-text/${sessionId}/final-transcript.txt`;
     const transcriptUrl = await uploadToR2(transcriptPath, transcriptKey);
 
-    // 5. Upload chunks to R2
+    // Upload each chunk to R2
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -72,8 +75,8 @@ router.post('/', async (req, res) => {
       chunkUrls.push(url);
     }
 
-    // 6. Generate title & description
-    const titleDescPrompt = getTitleDescriptionPrompt(editedText);
+    // Generate title & description
+    const titleDescPrompt = getTitleDescriptionPrompt(transcriptText);
     const titleDescResponse = await askOpenAI(titleDescPrompt);
 
     let title, description;
@@ -86,22 +89,22 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'AI generated title or description missing' });
     }
 
-    // 7. Generate SEO keywords
+    // Generate SEO keywords
     const seoPrompt = getSEOKeywordsPrompt(description);
     const seoKeywordsRaw = await askOpenAI(seoPrompt);
     const seoKeywords = seoKeywordsRaw.trim();
 
-    // 8. Generate artwork prompt
+    // Generate artwork prompt
     const artworkPrompt = getArtworkPrompt(description);
     const artworkDescription = (await askOpenAI(artworkPrompt)).trim();
 
-    // 9. Respond
+    // Respond with everything
     res.json({
       sessionId,
       transcriptUrl,
       chunkUrls,
       chunks,
-      fullTranscript: editedText,
+      fullTranscript: transcriptText,
       podcast: {
         title,
         description,
