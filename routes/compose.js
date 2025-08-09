@@ -11,7 +11,11 @@ import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
   getArtworkPrompt,
+  getIntroPrompt,
+  getMainPrompt,
+  getOutroPromptFull,
 } from '../utils/podcastHelpers.js';
+import getTone from '../utils/toneSetter.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -42,26 +46,48 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ error: 'Transcript file not found' });
     }
 
-    // Read transcript from disk
-    let transcriptText = fs.readFileSync(transcriptPath, 'utf-8');
+    // Read raw transcript from disk
+    const rawTranscript = fs.readFileSync(transcriptPath, 'utf-8');
 
-    // Clean/format transcript if needed
-    transcriptText = await editAndFormat(transcriptText);
-    if (!transcriptText || transcriptText.trim().length === 0) {
-      return res.status(400).json({ error: 'Transcript is empty after formatting' });
+    // Pick a random tone for the whole episode
+    const tone = getTone();
+
+    // Generate intro prompt and get intro text (no editing)
+    const introPrompt = getIntroPrompt({
+      hostName: 'Jonathan Harris',
+      weatherSummary: 'Typical UK weather, unpredictable as ever',
+      turingQuote: 'A computer would deserve to be called intelligent if it could deceive a human into believing that it was human.'
+    }, tone);
+    const introText = await askOpenAI(introPrompt);
+
+    // Generate main prompt and get main text (to be edited)
+    const mainPrompt = getMainPrompt([rawTranscript], tone);
+    let mainText = await askOpenAI(mainPrompt);
+
+    // Edit and format main text only
+    mainText = await editAndFormat(mainText);
+    if (!mainText || !mainText.trim()) {
+      return res.status(400).json({ error: 'Main script is empty after formatting' });
     }
 
-    // Save cleaned transcript back (optional, keeps consistency)
-    fs.writeFileSync(transcriptPath, transcriptText, 'utf-8');
+    // Generate outro prompt and get outro text (no editing)
+    const outroText = await getOutroPromptFull(tone).then(prompt => askOpenAI(prompt));
 
-    // Split transcript into chunks (4500 chars max)
-    const chunks = splitPlainText(transcriptText, 4500);
+    // Combine all parts into final transcript
+    const fullTranscript = [introText.trim(), mainText.trim(), outroText.trim()].join('\n\n');
+
+    // Save full transcript locally (overwrite or new file)
+    const finalTranscriptPath = path.join(storageDir, 'final-full-transcript.txt');
+    fs.writeFileSync(finalTranscriptPath, fullTranscript, 'utf-8');
+
+    // Split full transcript into chunks (4500 chars max)
+    const chunks = splitPlainText(fullTranscript, 4500);
 
     // Upload full transcript to R2
-    const transcriptKey = `final-text/${sessionId}/final-transcript.txt`;
-    const transcriptUrl = await uploadToR2(transcriptPath, transcriptKey);
+    const transcriptKey = `final-text/${sessionId}/final-full-transcript.txt`;
+    const transcriptUrl = await uploadToR2(finalTranscriptPath, transcriptKey);
 
-    // Upload each chunk to R2
+    // Upload chunks to R2
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -75,14 +101,13 @@ router.post('/', async (req, res) => {
       chunkUrls.push(url);
     }
 
-    // Generate title & description
-    const titleDescPrompt = getTitleDescriptionPrompt(transcriptText);
+    // Generate title & description from full transcript
+    const titleDescPrompt = getTitleDescriptionPrompt(fullTranscript);
     const titleDescResponse = await askOpenAI(titleDescPrompt);
-
     let title, description;
     try {
       ({ title, description } = JSON.parse(titleDescResponse));
-    } catch (err) {
+    } catch {
       return res.status(500).json({ error: 'Failed to parse AI title/description JSON' });
     }
     if (!title || !description) {
@@ -104,13 +129,14 @@ router.post('/', async (req, res) => {
       transcriptUrl,
       chunkUrls,
       chunks,
-      fullTranscript: transcriptText,
+      fullTranscript,
       podcast: {
         title,
         description,
         seoKeywords,
         artworkPrompt: artworkDescription,
       },
+      tone,
     });
   } catch (error) {
     console.error('Compose error:', error);
