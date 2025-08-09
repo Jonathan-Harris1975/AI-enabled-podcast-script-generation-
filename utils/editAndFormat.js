@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI(); // relies on process.env.OPENAI_API_KEY
+const openai = new OpenAI(); // expects OPENAI_API_KEY in env
 
 export default async function editAndFormat(scriptText) {
   if (typeof scriptText !== 'string' || !scriptText.trim()) {
@@ -12,7 +12,8 @@ You are a skilled podcast editor. Polish this AI-generated script for natural Br
 - Maintain sarcastic, witty tone
 - Fix repetition or awkward phrasing
 - Improve flow and transitions
-- Output plain clean text only — no markup
+- Output plain clean text only — no markup, no markdown, no HTML tags, no formatting of any kind
+- Avoid extra line breaks; only natural paragraph breaks allowed
 `.trim();
 
   try {
