@@ -13,9 +13,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const router = express.Router();
-
-async function runAI(prompt) {
+async function askOpenAI(prompt) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
@@ -24,6 +22,8 @@ async function runAI(prompt) {
   return response.choices[0].message.content;
 }
 
+const router = express.Router();
+
 router.post('/compose', async (req, res) => {
   try {
     const { sessionId, rawText } = req.body;
@@ -31,11 +31,10 @@ router.post('/compose', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId or rawText' });
     }
 
-    // Prepare local storage folder
     const storageDir = path.resolve('/mnt/data', sessionId);
     if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 
-    // 1. Edit & clean the raw transcript text
+    // 1. Edit & clean transcript
     const editedText = await editAndFormat(rawText);
     if (!editedText || editedText.trim().length === 0) {
       return res.status(400).json({ error: 'Transcript is empty after formatting' });
@@ -45,14 +44,14 @@ router.post('/compose', async (req, res) => {
     const transcriptPath = path.join(storageDir, 'final-transcript.txt');
     fs.writeFileSync(transcriptPath, editedText, 'utf-8');
 
-    // 3. Split transcript into chunks (max 4500 chars)
+    // 3. Split transcript into chunks
     const chunks = splitPlainText(editedText, 4500);
 
     // 4. Upload full transcript to R2
     const transcriptKey = `final-text/${sessionId}/final-transcript.txt`;
     const transcriptUrl = await uploadToR2(transcriptPath, transcriptKey);
 
-    // 5. Upload each chunk to R2
+    // 5. Upload chunks to R2
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -66,9 +65,9 @@ router.post('/compose', async (req, res) => {
       chunkUrls.push(url);
     }
 
-    // 6. Generate podcast title & description from full transcript
+    // 6. Generate title & description
     const titleDescPrompt = getTitleDescriptionPrompt(editedText);
-    const titleDescResponse = await runAI(titleDescPrompt);
+    const titleDescResponse = await askOpenAI(titleDescPrompt);
 
     let title, description;
     try {
@@ -80,16 +79,16 @@ router.post('/compose', async (req, res) => {
       return res.status(500).json({ error: 'AI generated title or description missing' });
     }
 
-    // 7. Generate SEO keywords from description
+    // 7. Generate SEO keywords
     const seoPrompt = getSEOKeywordsPrompt(description);
-    const seoKeywordsRaw = await runAI(seoPrompt);
+    const seoKeywordsRaw = await askOpenAI(seoPrompt);
     const seoKeywords = seoKeywordsRaw.trim();
 
-    // 8. Generate artwork prompt from description
+    // 8. Generate artwork prompt
     const artworkPrompt = getArtworkPrompt(description);
-    const artworkDescription = (await runAI(artworkPrompt)).trim();
+    const artworkDescription = (await askOpenAI(artworkPrompt)).trim();
 
-    // 9. Respond with all gathered info
+    // 9. Respond
     res.json({
       sessionId,
       transcriptUrl,
@@ -101,7 +100,7 @@ router.post('/compose', async (req, res) => {
         description,
         seoKeywords,
         artworkPrompt: artworkDescription,
-      }
+      },
     });
   } catch (error) {
     console.error('Compose error:', error);
