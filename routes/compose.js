@@ -9,7 +9,8 @@ import {
   getArtworkPrompt
 } from '../utils/podcastHelpers.js';
 
-import uploadToR2 from '../utils/uploadToR2.js';
+import uploadToR2 from '../utils/uploadToR2.js'; // For transcripts
+import uploadChunksToR2 from '../utils/uploadChunksToR2.js'; // For chunks
 
 const router = express.Router();
 
@@ -23,15 +24,6 @@ async function runPrompt(prompt) {
 
 router.post('/', async (req, res) => {
   try {
-    console.log('Env vars for R2:', {
-      transcriptBucket: process.env.R2_BUCKET_TRANSCRIPTS,
-      transcriptBaseUrl: process.env.R2_PUBLIC_BASE_URL,
-      chunksBucket: process.env.R2_BUCKET_CHUNKS,
-      chunksBaseUrl: process.env.R2_PUBLIC_BASE_URL_1,
-      accessKey: process.env.R2_ACCESS_KEY ? 'set' : 'missing',
-      endpoint: process.env.R2_ENDPOINT
-    });
-
     const { sessionId } = req.body;
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
@@ -60,34 +52,31 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No raw chunk files found' });
     }
 
-    // Clean chunk numbers like "33. " from the start of each chunk before editing
+    // Edit raw chunks
     const editedMainChunks = await Promise.all(
       rawChunkFiles.map(async f => {
         const filePath = path.join(storageDir, f);
         const content = fs.readFileSync(filePath, 'utf-8').trim();
         if (!content) throw new Error(`Empty chunk file: ${f}`);
-
-        // Remove leading chunk number, e.g. "33. "
-        const cleanedContent = content.replace(/^\d+\.\s*/, '');
-
-        const edited = await editAndFormat(cleanedContent);
+        const edited = await editAndFormat(content);
         return (typeof edited === 'string' ? edited : '').replace(/\n+/g, ' ');
       })
     );
 
+    // Compose final transcript text cleanly
     const transcript = [intro, ...editedMainChunks, outro].join(' ');
 
+    // Split final transcript into 4500 char chunks
     const finalChunks = splitPlainText(transcript, 4500);
 
-    // Save final transcript locally
+    // Save final transcript and chunks locally
     const transcriptPath = path.join(storageDir, 'final-transcript.txt');
     fs.writeFileSync(transcriptPath, transcript);
 
-    // Save final chunks locally
     const chunksPath = path.join(storageDir, 'final-chunks.json');
     fs.writeFileSync(chunksPath, JSON.stringify(finalChunks, null, 2));
 
-    // Generate title & description
+    // Generate title & description from full transcript
     const titleDescriptionRaw = await runPrompt(getTitleDescriptionPrompt(transcript));
     let title = '';
     let description = '';
@@ -102,30 +91,40 @@ router.post('/', async (req, res) => {
     const seoKeywords = await runPrompt(getSEOKeywordsPrompt(description));
     const artworkPromptFinal = await runPrompt(getArtworkPrompt(description));
 
-    // Upload transcript to R2
+    // Upload full transcript
     let transcriptUrl = '';
     try {
-      console.log('Uploading transcript to R2...');
       transcriptUrl = await uploadToR2(
         transcriptPath,
         `final-text/${sessionId}/final-transcript.txt`
       );
-      console.log('Transcript uploaded successfully:', transcriptUrl);
     } catch (uploadErr) {
-      console.error('❌ Upload to R2 failed:', uploadErr);
-      return res.status(500).json({
-        error: 'Upload to R2 failed',
-        details: uploadErr.message || String(uploadErr)
-      });
+      console.error('❌ Upload transcript to R2 failed:', uploadErr);
+      return res.status(500).json({ error: 'Upload transcript to R2 failed', details: uploadErr.message });
     }
 
-    // Save prompt outputs locally
+    // Upload chunks and collect URLs
+    let chunkUrls = [];
+    try {
+      chunkUrls = await Promise.all(
+        finalChunks.map(async (chunk, index) => {
+          const key = `final-text/${sessionId}/chunk-${index + 1}.txt`;
+          await uploadChunksToR2(chunk, key); // Upload text chunk to R2
+          return `${process.env.R2_PUBLIC_BASE_URL_1}/${process.env.R2_BUCKET_CHUNKS}/${key}`;
+        })
+      );
+    } catch (uploadErr) {
+      console.error('❌ Upload chunks to R2 failed:', uploadErr);
+      return res.status(500).json({ error: 'Upload chunks to R2 failed', details: uploadErr.message });
+    }
+
+    // Save metadata locally
     fs.writeFileSync(path.join(storageDir, 'title.txt'), title);
     fs.writeFileSync(path.join(storageDir, 'description.txt'), description);
     fs.writeFileSync(path.join(storageDir, 'seo-keywords.txt'), seoKeywords);
     fs.writeFileSync(path.join(storageDir, 'artwork-prompt.txt'), artworkPromptFinal);
 
-    // Return JSON response
+    // Respond with all data including chunk URLs
     res.json({
       sessionId,
       title,
@@ -134,9 +133,9 @@ router.post('/', async (req, res) => {
       artworkPrompt: artworkPromptFinal,
       fullTranscript: transcript,
       chunks: finalChunks,
+      chunkUrls,         // <-- chunk URLs here
       transcriptUrl
     });
-
   } catch (err) {
     console.error('❌ Compose error:', err);
     res.status(500).json({
