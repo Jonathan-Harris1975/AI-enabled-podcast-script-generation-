@@ -118,7 +118,7 @@ router.post('/', async (req, res) => {
       const localPath = path.join(storageDir, chunkFile);
       const remoteKey = `raw-text/${sessionId}/${chunkFile}`;
       try {
-        const url = await uploadChunksToR2(localPath, remoteKey);
+        const url = await uploadchunksToR2(localPath, remoteKey);
         console.log(`Chunk uploaded: ${chunkFile} → ${url}`);
         chunkUrls.push({ filename: chunkFile, url });
       } catch (err) {
