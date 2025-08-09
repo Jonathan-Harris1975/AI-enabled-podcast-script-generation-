@@ -18,7 +18,7 @@ import {
 
 // Load books data using Node.js compatible method
 const booksData = JSON.parse(
-  readFileSync(new URL('../books.json', import.meta.url))
+  readFileSync(new URL('..data/books.json', import.meta.url))
 );
 const books = () => booksData[Math.floor(Math.random() * booksData.length)];
 
