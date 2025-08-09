@@ -1,66 +1,77 @@
+// routes/compose.js
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
-import splitPlainText from '../utils/splitPlainText.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
+import splitPlainText from '../utils/splitPlainText.js';
+import {
+  getTitleDescriptionPrompt,
+  getSEOKeywordsPrompt,
+  getArtworkPrompt
+} from '../utils/podcastHelpers.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 
 const router = express.Router();
 
-router.post('/compose', async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const { sessionId, rawText } = req.body;
-    if (!sessionId || !rawText) {
-      return res.status(400).json({ error: 'Missing sessionId or rawText' });
+    const { transcript } = req.body;
+    if (!transcript) {
+      return res.status(400).json({ error: 'Transcript is required' });
     }
 
-    const storageDir = path.resolve('/mnt/data', sessionId);
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
+    // Clean + format transcript
+    const cleanedTranscript = await editAndFormat(transcript);
 
-    // 1. Edit & format raw text
-    const editedText = await editAndFormat(rawText);
+    // Save full transcript locally
+    const sessionId = `TT-${new Date().toISOString().split('T')[0]}`;
+    const transcriptsDir = path.join(process.cwd(), 'sessions', sessionId);
+    fs.mkdirSync(transcriptsDir, { recursive: true });
+    const transcriptPath = path.join(transcriptsDir, 'transcript.txt');
+    fs.writeFileSync(transcriptPath, cleanedTranscript, 'utf-8');
 
-    // 2. Split into chunks (max 4500 chars)
-    const chunks = splitPlainText(editedText, 4500);
+    // Upload full transcript to R2
+    const transcriptUrl = await uploadToR2(
+      `transcripts/${sessionId}/transcript.txt`,
+      cleanedTranscript
+    );
 
-    // 3. Save full transcript locally
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
-    fs.writeFileSync(transcriptPath, editedText, 'utf-8');
+    // Split into chunks of ~4500 chars
+    const chunks = splitPlainText(cleanedTranscript, 4500);
 
-    // 4. Upload full transcript to R2
-    const transcriptUrl = await uploadToR2(transcriptPath, `final-text/${sessionId}/final-transcript.txt`);
+    // Upload chunks to R2 and collect URLs
+    const chunkUrls = await Promise.all(
+      chunks.map((chunk, idx) =>
+        uploadToR2(
+          `raw-text/${sessionId}/chunk-${idx + 1}.txt`,
+          chunk
+        )
+      )
+    );
 
-    // 5. Upload chunks to R2
-    const chunkUrls = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const key = `final-text/${sessionId}/chunk-${i + 1}.txt`;
-      const tempFilePath = path.join(os.tmpdir(), `upload-chunk-${sessionId}-${i + 1}.txt`);
+    // Build single combined prompt for title + description
+    const tdPrompt = getTitleDescriptionPrompt(cleanedTranscript);
+    const { title, description } = await editAndFormat(tdPrompt, true);
 
-      fs.writeFileSync(tempFilePath, chunk, 'utf-8');
+    // Get SEO keywords
+    const seoPrompt = getSEOKeywordsPrompt(description);
+    const seoKeywords = await editAndFormat(seoPrompt);
 
-      const url = await uploadChunksToR2(tempFilePath, key);
+    // Get artwork prompt
+    const artworkPrompt = getArtworkPrompt(description);
 
-      fs.unlinkSync(tempFilePath); // clean temp
-
-      chunkUrls.push(url);
-    }
-
-    // Respond with all URLs and transcript
+    // Final API response
     res.json({
-      sessionId,
-      transcriptUrl,
-      chunkUrls,
-      chunks,
-      fullTranscript: editedText
+      title,
+      description,
+      seoKeywords,
+      artworkPrompt,
+      fullTranscript: transcriptUrl,
+      chunks: chunkUrls
     });
   } catch (err) {
-    console.error('Compose/upload error:', err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    console.error('Compose route error:', err);
+    res.status(500).json({ error: 'Failed to process transcript' });
   }
 });
 
