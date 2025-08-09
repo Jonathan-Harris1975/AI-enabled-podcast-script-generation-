@@ -23,6 +23,13 @@ async function runPrompt(prompt) {
 
 router.post('/', async (req, res) => {
   try {
+    console.log('Env vars for R2:', {
+      bucket: process.env.R2_BUCKET_TRANSCRIPTS,
+      baseUrl: process.env.R2_PUBLIC_BASE_URL,
+      accessKey: process.env.R2_ACCESS_KEY ? 'set' : 'missing',
+      endpoint: process.env.R2_ENDPOINT
+    });
+
     const { sessionId } = req.body;
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
@@ -40,7 +47,6 @@ router.post('/', async (req, res) => {
     const outro = fs.readFileSync(outroPath, 'utf-8').trim().replace(/\n+/g, ' ');
 
     const allFiles = fs.readdirSync(storageDir);
-
     const rawChunkFiles = allFiles
       .filter(f => f.startsWith('raw-chunk-'))
       .sort((a, b) => {
@@ -63,7 +69,6 @@ router.post('/', async (req, res) => {
     );
 
     const transcript = [intro, ...editedMainChunks, outro].join(' ');
-
     const finalChunks = splitPlainText(transcript, 4500);
 
     // Save final transcript locally
@@ -74,7 +79,7 @@ router.post('/', async (req, res) => {
     const chunksPath = path.join(storageDir, 'final-chunks.json');
     fs.writeFileSync(chunksPath, JSON.stringify(finalChunks, null, 2));
 
-    // Generate final outputs via prompts
+    // Generate title & description
     const titleDescriptionRaw = await runPrompt(getTitleDescriptionPrompt(transcript));
     let title = '';
     let description = '';
@@ -89,14 +94,32 @@ router.post('/', async (req, res) => {
     const seoKeywords = await runPrompt(getSEOKeywordsPrompt(description));
     const artworkPromptFinal = await runPrompt(getArtworkPrompt(description));
 
-    // Upload final transcript to transcripts bucket
-    const transcriptUrl = await uploadToR2(
-      transcriptPath,
-      `final-text/${sessionId}/final-transcript.txt`,
-      process.env.R2_BUCKET_TRANSCRIPTS,
-      process.env.R2_PUBLIC_BASE_URL
-    );
+    // Upload transcript to R2 with error handling
+    let transcriptUrl = '';
+    try {
+      console.log('Uploading transcript to R2...');
+      transcriptUrl = await uploadToR2(
+        transcriptPath,
+        `final-text/${sessionId}/final-transcript.txt`,
+        process.env.R2_BUCKET_TRANSCRIPTS,
+        process.env.R2_PUBLIC_BASE_URL
+      );
+      console.log('Transcript uploaded successfully:', transcriptUrl);
+    } catch (uploadErr) {
+      console.error('❌ Upload to R2 failed:', uploadErr);
+      return res.status(500).json({
+        error: 'Upload to R2 failed',
+        details: uploadErr.message || String(uploadErr)
+      });
+    }
 
+    // Save prompts to files locally
+    fs.writeFileSync(path.join(storageDir, 'title.txt'), title);
+    fs.writeFileSync(path.join(storageDir, 'description.txt'), description);
+    fs.writeFileSync(path.join(storageDir, 'seo-keywords.txt'), seoKeywords);
+    fs.writeFileSync(path.join(storageDir, 'artwork-prompt.txt'), artworkPromptFinal);
+
+    // Final JSON response
     res.json({
       sessionId,
       title,
@@ -112,7 +135,7 @@ router.post('/', async (req, res) => {
     console.error('❌ Compose error:', err);
     res.status(500).json({
       error: 'Failed to compose final outputs',
-      details: err.message
+      details: err.message || String(err)
     });
   }
 });
