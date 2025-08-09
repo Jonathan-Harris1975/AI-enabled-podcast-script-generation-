@@ -30,11 +30,9 @@ ${description}`;
 }
 
 function getArtworkPrompt(description) {
-  return `Create a cinematic, abstract digital artwork inspired by this summary. 
-Use a futuristic, sleek AI theme with neon lighting and geometric shapes. 
-Focus on bold visual metaphors, striking lighting, and conceptual elements. 
-Avoid text, branding, or logos. Make it surreal yet professional, suitable for podcast cover art. 
-Keep the core visual idea under 100 characters.
+  return `Futuristic AI landscape with glowing neural networks, abstract data streams,  
+telepathic chatbots represented by shimmering silhouettes, surreal digital patterns,  
+and moody lighting with a British café vibe. No text or logos. Under 100 characters.
 
 Episode Summary:
 ${description}`;
