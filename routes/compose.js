@@ -24,13 +24,20 @@ async function askOpenAI(prompt) {
 
 const router = express.Router();
 
-router.post('/compose', async (req, res) => {
+// Optional: simple GET to verify route is live
+router.get('/', (req, res) => {
+  res.json({ message: 'Compose route is alive' });
+});
+
+// Correct POST route at root since mounted at '/compose'
+router.post('/', async (req, res) => {
   try {
     const { sessionId, rawText } = req.body;
     if (!sessionId || !rawText) {
       return res.status(400).json({ error: 'Missing sessionId or rawText' });
     }
 
+    // Prepare local storage folder
     const storageDir = path.resolve('/mnt/data', sessionId);
     if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 
