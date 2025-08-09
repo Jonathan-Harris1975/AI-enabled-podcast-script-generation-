@@ -2,14 +2,27 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import OpenAI from 'openai';
 import splitPlainText from '../utils/splitPlainText.js';
 import editAndFormat from '../utils/editAndFormat.js';
 import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 import { getTitleDescriptionPrompt, getSEOKeywordsPrompt, getArtworkPrompt } from '../utils/podcastHelpers.js';
-import runAI from '../utils/runAI.js'; // your LLM call utility
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const router = express.Router();
+
+async function runAI(prompt) {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.7,
+  });
+  return response.choices[0].message.content;
+}
 
 router.post('/compose', async (req, res) => {
   try {
@@ -18,18 +31,17 @@ router.post('/compose', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId or rawText' });
     }
 
-    // Setup storage
+    // Prepare local storage folder
     const storageDir = path.resolve('/mnt/data', sessionId);
     if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
 
-    // 1. Clean & format raw text → edited transcript
+    // 1. Edit & clean the raw transcript text
     const editedText = await editAndFormat(rawText);
     if (!editedText || editedText.trim().length === 0) {
       return res.status(400).json({ error: 'Transcript is empty after formatting' });
     }
-    console.log(`Edited transcript length: ${editedText.length}`);
 
-    // 2. Save transcript locally
+    // 2. Save full transcript locally
     const transcriptPath = path.join(storageDir, 'final-transcript.txt');
     fs.writeFileSync(transcriptPath, editedText, 'utf-8');
 
@@ -39,9 +51,8 @@ router.post('/compose', async (req, res) => {
     // 4. Upload full transcript to R2
     const transcriptKey = `final-text/${sessionId}/final-transcript.txt`;
     const transcriptUrl = await uploadToR2(transcriptPath, transcriptKey);
-    console.log(`Uploaded transcript URL: ${transcriptUrl}`);
 
-    // 5. Upload chunks to R2
+    // 5. Upload each chunk to R2
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -55,34 +66,30 @@ router.post('/compose', async (req, res) => {
       chunkUrls.push(url);
     }
 
-    // 6. Generate title & description (JSON expected)
+    // 6. Generate podcast title & description from full transcript
     const titleDescPrompt = getTitleDescriptionPrompt(editedText);
     const titleDescResponse = await runAI(titleDescPrompt);
-    console.log('Title/Description AI response:', titleDescResponse);
 
     let title, description;
     try {
       ({ title, description } = JSON.parse(titleDescResponse));
     } catch (err) {
-      console.error('Failed to parse title/description JSON:', err);
-      return res.status(500).json({ error: 'Failed to generate podcast title and description' });
+      return res.status(500).json({ error: 'Failed to parse AI title/description JSON' });
     }
-
     if (!title || !description) {
-      return res.status(500).json({ error: 'Generated title or description is missing' });
+      return res.status(500).json({ error: 'AI generated title or description missing' });
     }
 
-    // 7. Generate SEO keywords (comma-separated list)
+    // 7. Generate SEO keywords from description
     const seoPrompt = getSEOKeywordsPrompt(description);
-    const seoKeywords = await runAI(seoPrompt);
-    console.log('SEO keywords AI response:', seoKeywords);
+    const seoKeywordsRaw = await runAI(seoPrompt);
+    const seoKeywords = seoKeywordsRaw.trim();
 
-    // 8. Generate artwork prompt
+    // 8. Generate artwork prompt from description
     const artworkPrompt = getArtworkPrompt(description);
-    const artworkDescription = await runAI(artworkPrompt);
-    console.log('Artwork prompt AI response:', artworkDescription);
+    const artworkDescription = (await runAI(artworkPrompt)).trim();
 
-    // 9. Respond with all data
+    // 9. Respond with all gathered info
     res.json({
       sessionId,
       transcriptUrl,
@@ -93,11 +100,11 @@ router.post('/compose', async (req, res) => {
         title,
         description,
         seoKeywords,
-        artworkPrompt: artworkDescription.trim()
+        artworkPrompt: artworkDescription,
       }
     });
   } catch (error) {
-    console.error('Compose route error:', error);
+    console.error('Compose error:', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 });
