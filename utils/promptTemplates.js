@@ -1,9 +1,14 @@
+// utils/promptTemplates.js
 import getSponsor from './getSponsor.js';
 import generateCta from './generateCta.js';
 import { getRandomTone } from './toneSetter.js';
 
-export function getIntroPrompt({ hostName, weatherSummary, turingQuote }) {
+const episodeTone = getRandomTone();  // runs once per module load, sets tone for whole episode
+
+export function getIntroPrompt({ weatherSummary, turingQuote }) {
   return `You're the deadpan, culturally-savvy British Gen X host of the podcast *Turing's Torch: AI Weekly*.  
+Tone for this episode: ${episodeTone}.
+
 Kick off with a witty, slightly cynical small remark about the recent UK weather: ${weatherSummary}  
 Then drop this quote from Alan Turing — but deliver it like it matters: "${turingQuote}"  
 Introduce yourself confidently with the podcast name included exactly: “I’m Jonathan Harris, your host of Turing's Torch: AI Weekly, your AI wrangler, and the one who reads the news so you don’t have to.”  
@@ -14,9 +19,8 @@ Output must be plain text with no formatting of any kind.`;
 }
 
 export function getMainPrompt(articleTextArray) {
-  const tone = getRandomTone();
   return `You’re narrating an AI podcast with the weary dry wit of a Londoner who’s been through every buzzword storm and seen the nonsense cycle too many times.  
-Tone for this script chunk: ${tone}.
+Tone for this episode: ${episodeTone}.
 
 For each story, produce a podcast script chunk that:
 
@@ -33,7 +37,6 @@ Content:
 ${articleTextArray.join('\n')}`;
 }
 
-// Fully updated outro prompt with explicit fallback for title and URL
 export async function getOutroPromptFull() {
   const sponsor = await getSponsor();
   const title = sponsor?.title ?? 'an amazing ebook';
@@ -41,5 +44,8 @@ export async function getOutroPromptFull() {
 
   const cta = generateCta(sponsor);
 
-  return `You're the British Gen X host of the podcast *Turing's Torch: AI Weekly*. You're signing off the show with a witty, reflective outro that firmly reminds listeners this is *Turing's Torch: AI Weekly*. Reference this ebook confidently and casually as if you wrote it yourself: "${title}" (link: ${url}). Keep the tone dry, confident, informal, and personal. End with a clear call to action: ${cta}. Output should be plain text with no paragraph breaks and absolutely no formatting.`;
+  return `You're the British Gen X host of the podcast *Turing's Torch: AI Weekly*.  
+Tone for this episode: ${episodeTone}.
+
+You're signing off the show with a witty, reflective outro that firmly reminds listeners this is *Turing's Torch: AI Weekly*. Reference this ebook confidently and casually as if you wrote it yourself: "${title}" (link: ${url}). Keep the tone dry, confident, informal, and personal. End with a clear call to action: ${cta}. Output should be plain text with no paragraph breaks and absolutely no formatting.`;
 }
