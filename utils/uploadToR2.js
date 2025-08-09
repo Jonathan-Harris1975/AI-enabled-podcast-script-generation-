@@ -1,11 +1,16 @@
-import fs from 'fs';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const {
   R2_ACCESS_KEY,
   R2_SECRET_KEY,
+  R2_BUCKET_TRANSCRIPTS,
   R2_ENDPOINT,
+  R2_PUBLIC_BASE_URL
 } = process.env;
+
+if (!R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET_TRANSCRIPTS || !R2_ENDPOINT || !R2_PUBLIC_BASE_URL) {
+  throw new Error('Missing one or more required R2 environment variables for transcripts.');
+}
 
 const s3 = new S3Client({
   region: 'auto',
@@ -16,29 +21,23 @@ const s3 = new S3Client({
   }
 });
 
-/**
- * Upload file to R2 with explicit bucket & baseUrl
- * @param {string} localFilePath
- * @param {string} remoteKey
- * @param {string} bucket
- * @param {string} baseUrl
- * @returns {Promise<string>} public URL
- */
-export default async function uploadToR2(localFilePath, remoteKey, bucket, baseUrl) {
-  const fileBuffer = fs.readFileSync(localFilePath);
+export default async function uploadToR2(filePath, key) {
+  const fs = await import('fs');
+  const fileContent = fs.readFileSync(filePath);
 
   const command = new PutObjectCommand({
-    Bucket: bucket,
-    Key: remoteKey,
-    Body: fileBuffer,
+    Bucket: R2_BUCKET_TRANSCRIPTS,  // <--- Use correct bucket here
+    Key: key,
+    Body: fileContent,
     ContentType: 'text/plain'
   });
 
   await s3.send(command);
 
-  // Normalize URL slashes
-  const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  const cleanKey = remoteKey.startsWith('/') ? remoteKey : `/${remoteKey}`;
+  const baseUrl = R2_PUBLIC_BASE_URL.endsWith('/') ? R2_PUBLIC_BASE_URL.slice(0, -1) : R2_PUBLIC_BASE_URL;
+  const keyPath = key.startsWith('/') ? key : `/${key}`;
 
-  return `${cleanBaseUrl}${cleanKey}`;
+  const publicUrl = `${baseUrl}${keyPath}`;
+  console.log(`✅ Uploaded transcript: ${publicUrl}`);
+  return publicUrl;
 }
