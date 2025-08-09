@@ -4,7 +4,7 @@ import path from 'path';
 import uploadchunksToR2 from '../utils/uploadchunksToR2.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import getRandomSponsor from '../utils/books.js';
+import {getRandomSponsor} from '../utils/books.js';
 import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
