@@ -9,6 +9,7 @@ import mainRoute from './routes/main.js';
 import outroRoute from './routes/outro.js';
 import composeRoute from './routes/compose.js';
 import clearSessionRoute from './routes/clearsession.js';
+import uploadChunksRoute from './routes/uploadChunks.js';  // <-- Import it here
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +25,7 @@ app.use('/main', mainRoute);
 app.use('/outro', outroRoute);
 app.use('/compose', composeRoute);
 app.use('/clearsession', clearSessionRoute);
+app.use('/upload-chunks', uploadChunksRoute);  // <-- Mount it here
 
 // 404 handler
 app.use((req, res) => {
