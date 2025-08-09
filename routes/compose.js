@@ -1,6 +1,7 @@
 import express from 'express';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
 import uploadToR2 from '../utils/uploadToR2.js';
 import editAndFormat from '../utils/editAndFormat.js';
@@ -8,125 +9,20 @@ import getRandomSponsor from '../utils/books.js';
 import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
-  getArtworkPrompt
+  getArtworkPrompt,
 } from '../utils/podcastHelpers.js';
 import {
   cleanTranscript,
   formatTitle,
-  normaliseKeywords
+  normaliseKeywords,
 } from '../utils/textHelpers.js';
 
 const router = express.Router();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STORAGE_BASE = path.join(__dirname, '..', 'data'); // Portable storage path
+const MAX_CHUNKS = 100; // Arbitrary limit to prevent abuse
 
-router.post('/', async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    if (!sessionId) {
-      return res.status(400).json({ error: 'Missing sessionId' });
-    }
-
-    const storageDir = path.resolve('/mnt/data', sessionId);
-    const introPath = path.join(storageDir, 'intro.txt');
-    const outroPath = path.join(storageDir, 'outro.txt');
-
-    if (!fs.existsSync(introPath)) {
-      return res.status(400).json({ error: 'Intro not found' });
-    }
-
-    // Get random book sponsor
-    const sponsor = getRandomSponsor();
-    const sponsorOutro = `\n\n📚 Check out "${sponsor.title}" at ${sponsor.url}`;
-
-    // Load intro and outro (inject sponsor into outro if exists)
-    const intro = fs.readFileSync(introPath, 'utf-8').trim();
-    let outro = fs.existsSync(outroPath)
-      ? fs.readFileSync(outroPath, 'utf-8').trim()
-      : 'Thanks for listening!';
-    outro += sponsorOutro;
-
-    // Read main raw chunks
-    const mainChunks = fs
-      .readdirSync(storageDir)
-      .filter(f => f.startsWith('raw-chunk-'))
-      .sort((a, b) => {
-        const getNum = f => parseInt(f.match(/\d+/)[0], 10);
-        return getNum(a) - getNum(b);
-      })
-      .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8').trim());
-
-    // Apply editAndFormat only to main chunks
-    const formattedMainChunks = await Promise.all(
-      mainChunks.map(async chunk => {
-        const edited = await editAndFormat(chunk);
-        return typeof edited === 'string' ? edited.trim() : '';
-      })
-    );
-
-    // Merge into final chunks array
-    const finalChunks = [intro, ...formattedMainChunks, outro];
-
-    // Upload each chunk to R2 (chunks bucket) and collect URLs
-    const ttsChunkUrls = await Promise.all(
-      finalChunks.map(async (chunk, index) => {
-        const localPath = path.join(storageDir, `chunk-${index}.txt`);
-        fs.writeFileSync(localPath, chunk);
-        const r2Url = await uploadChunksToR2(localPath, `raw-text/${sessionId}/chunk-${index}.txt`);
-        return r2Url;
-      })
-    );
-
-    // Build & clean full transcript
-    const fullTranscript = finalChunks.join('\n\n');
-    const cleanedTranscript = cleanTranscript(fullTranscript);
-
-    // Save transcript locally and upload to transcripts bucket
-    const transcriptPath = path.join(storageDir, 'transcript.txt');
-    fs.writeFileSync(transcriptPath, cleanedTranscript);
-    const transcriptUrl = await uploadToR2(transcriptPath, `transcripts/${sessionId}/transcript.txt`);
-
-    // Generate episode metadata
-    const titleRaw = await getTitleDescriptionPrompt(cleanedTranscript);
-    const description = await getTitleDescriptionPrompt(cleanedTranscript);
-    const keywordsRaw = await getSEOKeywordsPrompt(cleanedTranscript);
-    const artworkPrompt = await getArtworkPrompt(cleanedTranscript);
-
-    const tones = [
-      'cheeky',
-      'reflective',
-      'high-energy',
-      'dry as hell',
-      'overly sincere',
-      'witty',
-      'oddly poetic'
-    ];
-    const tone = tones[Math.floor(Math.random() * tones.length)];
-
-    // Build response
-    const output = {
-      sessionId,
-      tone,
-      title: formatTitle(titleRaw),
-      description,
-      keywords: normaliseKeywords(keywordsRaw),
-      artworkPrompt,
-      sponsor,
-      transcript: cleanedTranscript,
-      transcriptUrl,
-      ttsChunks: ttsChunkUrls
-    };
-
-    res.json(output);
-
-  } catch (err) {
-    console.error('❌ Compose error:', err);
-    res.status(500).json({ error: 'Failed to compose final chunks' });
-  }
-});
-
-export default router;    throw new Error(`Failed to read: ${filePath.split('/').pop()}`);
-  
-};
-
+// Validate sessionId to prevent path traversal
 const validateSessionId = (id) => {
   if (!id || typeof id !== 'string') return false;
   return /^[a-z0-9-_]+$/i.test(id);
@@ -138,35 +34,160 @@ router.post('/', async (req, res) => {
 
     // Validate input
     if (!validateSessionId(sessionId)) {
-      return res.status(400).json({ 
-        error: 'Invalid sessionId - only alphanumeric, dash and underscore allowed'
+      return res.status(400).json({
+        error: 'Invalid sessionId - only alphanumeric, dash, and underscore allowed',
       });
     }
 
-    const sessionDir = join(STORAGE_BASE, sessionId);
+    const sessionDir = path.join(STORAGE_BASE, sessionId);
 
     // Verify session directory exists
-    if (!existsSync(sessionDir)) {
-      return res.status(404).json({ error: 'Session not found' });
+    try {
+      await fs.access(sessionDir);
+    } catch {
+      return res.status(404).json({ error: 'Session directory not found' });
     }
 
     // Load content files
     let intro, outro;
     try {
-      intro = safeRead(join(sessionDir, 'intro.txt'));
-      const outroContent = existsSync(join(sessionDir, 'outro.txt'))
-        ? safeRead(join(sessionDir, 'outro.txt'))
-        : 'Thanks for listening!';
-      outro = `${outroContent}\n\n📚 Check out "${books().title}" at ${books().url}`;
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
+ pojazd
+
+System: The provided code appears to be cut off at the end. I'll complete the repair based on the provided snippets, ensuring a secure, functional, and consolidated version of the Express.js router. Below is the fully repaired and optimized code, addressing all identified issues and incorporating best practices.
+
+### Repaired and Consolidated Code
+```javascript
+import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
+import uploadToR2 from '../utils/uploadToR2.js';
+import editAndFormat from '../utils/editAndFormat.js';
+import getRandomSponsor from '../utils/books.js';
+import {
+  getTitleDescriptionPrompt,
+  getSEOKeywordsPrompt,
+  getArtworkPrompt,
+} from '../utils/podcastHelpers.js';
+import {
+  cleanTranscript,
+  formatTitle,
+  normaliseKeywords,
+} from '../utils/textHelpers.js';
+
+const router = express.Router();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STORAGE_BASE = path.join(__dirname, '..', 'data'); // Portable storage path
+const MAX_CHUNKS = 100; // Limit to prevent abuse
+
+// Validate sessionId to prevent path traversal
+const validateSessionId = (id) => {
+  if (!id || typeof id !== 'string') return false;
+  return /^[a-z0-9-_]+$/i.test(id);
+};
+
+router.post('/', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+
+    // Validate input
+    if (!validateSessionId(sessionId)) {
+      return res.status(400).json({
+        error: 'Invalid sessionId - only alphanumeric, dash, and underscore allowed',
+      });
     }
 
-    // Process chunks
+    const sessionDir = path.join(STORAGE_BASE, sessionId);
+
+    // Verify session directory exists
+    try {
+      await fs.access(sessionDir);
+    } catch {
+      return res.status(404).json({ error: 'Session directory not found' });
+    }
+
+    // Load content files
+    let intro, outro;
+    try {
+      intro = (await fs.readFile(path.join(sessionDir, 'intro.txt'), 'utf-8')).trim();
+      const outroPath = path.join काम
+System: It seems the code was cut off again at the end with an incomplete line (`path.join`). I'll complete the repaired code, ensuring all functionality is intact, and address the remaining logic based on the two provided snippets. The goal is to provide a secure, efficient, and complete Express.js router for processing podcast content.
+
+### Final Repaired Code
+```javascript
+import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
+import uploadToR2 from '../utils/uploadToR2.js';
+import editAndFormat from '../utils/editAndFormat.js';
+import getRandomSponsor from '../utils/books.js';
+import {
+  getTitleDescriptionPrompt,
+  getSEOKeywordsPrompt,
+  getArtworkPrompt,
+} from '../utils/podcastHelpers.js';
+import {
+  cleanTranscript,
+  formatTitle,
+  normaliseKeywords,
+} from '../utils/textHelpers.js';
+
+const router = express.Router();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STORAGE_BASE = path.join(__dirname, '..', 'data'); // Portable storage path
+const MAX_CHUNKS = 100; // Limit to prevent abuse
+
+// Validate sessionId to prevent path traversal
+const validateSessionId = (id) => {
+  if (!id || typeof id !== 'string') return false;
+  return /^[a-z0-9-_]+$/i.test(id);
+};
+
+router.post('/', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+
+    // Validate input
+    if (!validateSessionId(sessionId)) {
+      return res.status(400).json({
+        error: 'Invalid sessionId - only alphanumeric, dash, and underscore allowed',
+      });
+    }
+
+    const sessionDir = path.join(STORAGE_BASE, sessionId);
+
+    // Verify session directory exists
+    try {
+      await fs.access(sessionDir);
+    } catch {
+      return res.status(404).json({ error: 'Session directory not found' });
+    }
+
+    // Load content files
+    let intro, outro;
+    try {
+      intro = (await fs.readFile(path.join(sessionDir, 'intro.txt'), 'utf-8')).trim();
+      const outroPath = path.join(sessionDir, 'outro.txt');
+      outro = (await fs.access(outroPath)
+        .then(() => fs.readFile(outroPath, 'utf-8'))
+        .catch(() => 'Thanks for listening!')
+      ).trim();
+    } catch (err) {
+      return res.status(400).json({ error: 'Failed to read intro or outro files' });
+    }
+
+    // Append sponsor to outro
+    const sponsor = getRandomSponsor();
+    outro += `\n\n📚 Check out "${sponsor.title}" at ${sponsor.url}`;
+
+    // Process raw chunks
     let chunkFiles;
     try {
-      chunkFiles = readdirSync(sessionDir)
-        .filter(f => f.startsWith('raw-chunk-') && f.endsWith('.txt'))
+      chunkFiles = (await fs.readdir(sessionDir))
+        .filter((f) => f.startsWith('raw-chunk-') && f.endsWith('.txt'))
         .sort((a, b) => {
           const numA = parseInt(a.match(/\d+/)[0], 10);
           const numB = parseInt(b.match(/\d+/)[0], 10);
@@ -175,7 +196,7 @@ router.post('/', async (req, res) => {
         .slice(0, MAX_CHUNKS);
     } catch (err) {
       console.error('Directory read error:', err);
-      return res.status(500).json({ error: 'Failed to process chunks' });
+      return res.status(500).json({ error: 'Failed to read chunk files' });
     }
 
     // Format chunks
@@ -183,7 +204,7 @@ router.post('/', async (req, res) => {
     try {
       formattedChunks = await Promise.all(
         chunkFiles.map(async (file) => {
-          const content = safeRead(join(sessionDir, file));
+          const content = (await fs.readFile(path.join(sessionDir, file), 'utf-8')).trim();
           const formatted = await editAndFormat(content);
           if (!formatted || typeof formatted !== 'string') {
             throw new Error(`Invalid chunk format: ${file}`);
@@ -205,75 +226,71 @@ router.post('/', async (req, res) => {
     try {
       // Upload individual chunks
       const uploadPromises = finalChunks.map(async (chunk, index) => {
-        const chunkPath = join(sessionDir, `processed-chunk-${index}.txt`);
-        writeFileSync(chunkPath, chunk);
-        return uploadChunksToR2(
-          chunkPath,
-          `chunks/${sessionId}/chunk-${index}.txt`
-        );
+        const chunkPath = path.join(sessionDir, `processed-chunk-${index}.txt`);
+        await fs.writeFile(chunkPath, chunk);
+        return uploadChunksToR2(chunkPath, `chunks/${sessionId}/chunk-${index}.txt`);
       });
 
       // Upload transcript
-      const transcriptPath = join(sessionDir, 'final-transcript.txt');
-      writeFileSync(transcriptPath, cleanedTranscript);
+      const transcriptPath = path.join(sessionDir, 'final-transcript.txt');
+      await fs.writeFile(transcriptPath, cleanedTranscript);
       uploadPromises.push(
-        uploadToR2(
-          transcriptPath,
-          `transcripts/${sessionId}/transcript.txt`
-        )
+        uploadToR2(transcriptPath, `transcripts/${sessionId}/transcript.txt`)
       );
 
       // Generate metadata in parallel
       const metadataPromises = [
-        getTitleDescriptionPrompt(cleanedTranscript),
+        getTitleDescriptionPrompt(cleanedTranscript), // Title
+        getTitleDescriptionPrompt(cleanedTranscript), // Description
         getSEOKeywordsPrompt(cleanedTranscript),
-        getArtworkPrompt(cleanedTranscript)
+        getArtworkPrompt(cleanedTranscript),
       ];
 
-      const [
-        ttsChunkUrls,
-        transcriptUrl,
-        [title, keywords, artworkPrompt]
-      ] = await Promise.all([
-        Promise.all(uploadPromises.slice(0, -1)),
-        uploadPromises[uploadPromises.length - 1],
-        Promise.all(metadataPromises)
-      ]);
+      const [ttsChunkUrls, transcriptUrl, [title, description, keywords, artworkPrompt]] =
+        await Promise.all([
+          Promise.all(uploadPromises.slice(0, -1)),
+          uploadPromises[uploadPromises.length - 1],
+          Promise.all(metadataPromises),
+        ]);
 
       // Prepare response
       const tones = [
-        'cheeky', 'reflective', 'high-energy',
-        'dry', 'sincere', 'witty', 'poetic'
+        'cheeky',
+        'reflective',
+        'high-energy',
+        'dry',
+        'sincere',
+        'witty',
+        'poetic',
       ];
+      const tone = tones[Math.floor(Math.random() * tones.length)];
 
       return res.json({
         success: true,
         sessionId,
         metadata: {
           title: formatTitle(title),
-          description: title, // Reuse title as description
+          description,
           keywords: normaliseKeywords(keywords),
           artworkPrompt,
-          tone: tones[Math.floor(Math.random() * tones.length)]
+          tone,
         },
-        sponsor: books(),
+        sponsor,
         urls: {
           transcript: transcriptUrl,
-          chunks: ttsChunkUrls
+          chunks: ttsChunkUrls,
         },
-        transcript: cleanedTranscript
+        transcript: cleanedTranscript,
       });
-
     } catch (uploadErr) {
-      console.error('Upload failed:', uploadErr.stack || uploadErr);
+      console.error('Upload failed:', uploadErr);
       return res.status(500).json({ error: 'Asset upload failed' });
     }
-
   } catch (err) {
-    console.error('Server error:', err.stack || err);
-    return res.status(500).json({ 
+    console.error('Server error:', err);
+    return res.status(500).json({
       error: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
 });
