@@ -1,47 +1,46 @@
-// utils/uploadToR2.js
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+// utils/uploadchunksToR2.js
+import { s3, config } from './r2Config.js';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { getLogger } from './logger.js';
 
-const {
-  R2_ACCESS_KEY,
-  R2_SECRET_KEY,
-  R2_BUCKET_TRANSCRIPTS,
-  R2_ENDPOINT,
-  R2_PUBLIC_BASE_URL
-} = process.env;
-
-if (!R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET_TRANSCRIPTS || !R2_ENDPOINT || !R2_PUBLIC_BASE_URL) {
-  throw new Error('Missing one or more required R2 environment variables for transcripts.');
-}
-
-const s3 = new S3Client({
-  region: 'auto',
-  endpoint: R2_ENDPOINT,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY,
-    secretAccessKey: R2_SECRET_KEY
-  }
-});
+const logger = getLogger('R2-Chunks');
 
 /**
- * Upload transcript file to R2
- * @param {string} filePath - Local path to file
- * @param {string} key - Destination key in bucket
- * @returns {Promise<string>} - Public URL of uploaded transcript
+ * Specialized uploader for podcast chunks with text processing
+ * @param {string} filePath - Path to text chunk file
+ * @param {string} key - Destination key (e.g. 'chunks/episode-1/part-1.txt')
+ * @returns {Promise<string>} Public URL of uploaded chunk
  */
-export default async function uploadToR2(filePath, key) {
-  const fs = await import('fs');
-  const fileContent = fs.readFileSync(filePath);
+export default async function uploadchunksToR2(filePath, key) {
+  try {
+    const { readFile } = await import('fs/promises');
+    let content = await readFile(filePath, 'utf8');
 
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_TRANSCRIPTS,
-    Key: key,
-    Body: fileContent,
-    ContentType: 'text/plain'
-  });
+    // Process text content
+    content = content
+      .replace(/\r\n/g, '\n')  // Normalize line endings
+      .trim();
 
-  await s3.send(command);
+    const command = new PutObjectCommand({
+      Bucket: config.buckets.chunks,
+      Key: key,
+      Body: content,
+      ContentType: 'text/plain',
+      ContentEncoding: 'utf-8',
+      Metadata: {
+        'chunk-source': path.basename(filePath),
+        'processed-at': new Date().toISOString()
+      }
+    });
 
-  const publicUrl = `${R2_PUBLIC_BASE_URL}${R2_BUCKET_TRANSCRIPTS}${key}`;
-  console.log(`✅ Uploaded transcript: ${publicUrl}`);
-  return publicUrl;
+    await s3.send(command);
+    
+    const publicUrl = `${config.publicBaseUrl}/${key}`;
+    logger.success(`Uploaded chunk ${filePath} as ${publicUrl}`);
+    return publicUrl;
+
+  } catch (error) {
+    logger.error(`Chunk upload failed for ${filePath}:`, error);
+    throw new Error(`Chunk upload failed: ${error.message}`);
+  }
 }
