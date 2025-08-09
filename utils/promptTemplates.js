@@ -32,15 +32,13 @@ No fluff, no filler. Stick to the character count like it’s your last pint.:
 ${articleTextArray.join('\n')}`;
 }
 
-// The new async function to fetch sponsor, generate CTA and build the outro prompt
+// Fully updated outro prompt with explicit fallback for title and URL
 export async function getOutroPromptFull() {
   const sponsor = await getSponsor();
+  const title = sponsor?.title ?? 'an amazing ebook';
+  const url = sponsor?.url ?? 'https://example.com';
+
   const cta = generateCta(sponsor);
 
-  return `You're the British Gen X host of the podcast *Turing's Torch: AI Weekly*.  
-You're signing off the show with a witty, reflective outro that firmly reminds listeners this is *Turing's Torch: AI Weekly*.  
-Reference this ebook clearly and confidently as if you wrote it yourself: "${sponsor.title}" (link: ${sponsor.url}).  
-Keep the tone dry, confident, informal, and without any third-person detachment.  
-End with a clear call to action: ${cta}.  
-Output should be plain text with no paragraph breaks.`;
+  return `You're the British Gen X host of the podcast *Turing's Torch: AI Weekly*. You're signing off the show with a witty, reflective outro that firmly reminds listeners this is *Turing's Torch: AI Weekly*. Reference this ebook confidently and casually as if you wrote it yourself: "${title}" (link: ${url}). Keep the tone dry, confident, informal, and personal. End with a clear call to action: ${cta}. Output should be plain text with no paragraph breaks.`;
 }
