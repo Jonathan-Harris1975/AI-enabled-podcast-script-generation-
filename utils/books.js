@@ -1,4 +1,4 @@
-import books from '..data/books.json' assert { type: 'json' };
+import books from '../books.json' assert { type: 'json' };
 
 export default function getRandomSponsor() {
   const i = Math.floor(Math.random() * books.length);
