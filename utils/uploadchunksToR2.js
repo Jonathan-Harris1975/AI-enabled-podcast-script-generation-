@@ -1,4 +1,3 @@
-import fs from 'fs';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const {
@@ -22,17 +21,12 @@ const s3 = new S3Client({
   }
 });
 
-/**
- * Upload chunk file to R2 and return its public URL
- * @param {string} filePath - Local file path
- * @param {string} key - Bucket key (e.g. 'raw-text/sessionId/chunk-1.txt')
- * @returns {Promise<string>} public URL
- */
 export default async function uploadChunksToR2(filePath, key) {
+  const fs = await import('fs');
   const fileContent = fs.readFileSync(filePath);
 
   const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_CHUNKS,
+    Bucket: R2_BUCKET_CHUNKS,  // <--- Correct bucket
     Key: key,
     Body: fileContent,
     ContentType: 'text/plain'
@@ -40,9 +34,10 @@ export default async function uploadChunksToR2(filePath, key) {
 
   await s3.send(command);
 
-  const baseUrl = R2_PUBLIC_BASE_URL_1.endsWith('/')
-    ? R2_PUBLIC_BASE_URL_1
-    : R2_PUBLIC_BASE_URL_1 + '/';
+  const baseUrl = R2_PUBLIC_BASE_URL_1.endsWith('/') ? R2_PUBLIC_BASE_URL_1.slice(0, -1) : R2_PUBLIC_BASE_URL_1;
+  const keyPath = key.startsWith('/') ? key : `/${key}`;
 
-  return baseUrl + key;
+  const publicUrl = `${baseUrl}${keyPath}`;
+  console.log(`✅ Uploaded chunk: ${publicUrl}`);
+  return publicUrl;
 }
