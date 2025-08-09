@@ -1,15 +1,26 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import uploadChunksToR2 from '../utils/uploadChunksToR2.js';
+import uploadToR2 from '../utils/uploadToR2.js';
 import editAndFormat from '../utils/editAndFormat.js';
-import splitPlainText from '../utils/splitPlainText.js';
+import getRandomSponsor from '../utils/books.js';
+import {
+  getTitleDescriptionPrompt,
+  getSEOKeywordsPrompt,
+  getArtworkPrompt
+} from '../utils/podcastHelpers.js';
+import {
+  cleanTranscript,
+  formatTitle,
+  normaliseKeywords
+} from '../utils/textHelpers.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
     const { sessionId } = req.body;
-
     if (!sessionId) {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
@@ -18,68 +29,97 @@ router.post('/', async (req, res) => {
     const introPath = path.join(storageDir, 'intro.txt');
     const outroPath = path.join(storageDir, 'outro.txt');
 
-    if (!fs.existsSync(introPath) || !fs.existsSync(outroPath)) {
-      return res.status(400).json({ error: 'Intro or outro not found' });
+    if (!fs.existsSync(introPath)) {
+      return res.status(400).json({ error: 'Intro not found' });
     }
 
-    // Read intro & outro as-is (no edit)
-    const intro = fs.readFileSync(introPath, 'utf-8').trim().replace(/\n+/g, ' ');
-    const outro = fs.readFileSync(outroPath, 'utf-8').trim().replace(/\n+/g, ' ');
+    // Get random book sponsor
+    const sponsor = getRandomSponsor();
+    const sponsorOutro = `\n\n📚 Check out "${sponsor.title}" at ${sponsor.url}`;
 
-    console.log('📁 Reading files from:', storageDir);
-    const allFiles = fs.readdirSync(storageDir);
-    console.log('📄 Files in session folder:', allFiles);
+    // Load intro and outro (inject sponsor into outro if exists)
+    const intro = fs.readFileSync(introPath, 'utf-8').trim();
+    let outro = fs.existsSync(outroPath)
+      ? fs.readFileSync(outroPath, 'utf-8').trim()
+      : 'Thanks for listening!';
+    outro += sponsorOutro;
 
-    // Get raw chunk files
-    const rawChunkFiles = allFiles
+    // Read main raw chunks
+    const mainChunks = fs
+      .readdirSync(storageDir)
       .filter(f => f.startsWith('raw-chunk-'))
       .sort((a, b) => {
         const getNum = f => parseInt(f.match(/\d+/)[0], 10);
         return getNum(a) - getNum(b);
-      });
+      })
+      .map(f => fs.readFileSync(path.join(storageDir, f), 'utf-8').trim());
 
-    if (rawChunkFiles.length === 0) {
-      return res.status(400).json({ error: 'No raw chunk files found' });
-    }
-
-    // Read and edit main chunks
-    const editedMainChunks = await Promise.all(
-      rawChunkFiles.map(async f => {
-        const filePath = path.join(storageDir, f);
-        const content = fs.readFileSync(filePath, 'utf-8').trim();
-        if (!content) throw new Error(`Empty chunk file: ${f}`);
-        const edited = await editAndFormat(content);
-        return (typeof edited === 'string' ? edited : '').replace(/\n+/g, ' ');
+    // Apply editAndFormat only to main chunks
+    const formattedMainChunks = await Promise.all(
+      mainChunks.map(async chunk => {
+        const edited = await editAndFormat(chunk);
+        return typeof edited === 'string' ? edited.trim() : '';
       })
     );
 
-    // Merge all into transcript
-    const transcript = [intro, ...editedMainChunks, outro].join(' ');
+    // Merge into final chunks array
+    const finalChunks = [intro, ...formattedMainChunks, outro];
 
-    // Split into ≤ 4500 character chunks
-    const finalChunks = splitPlainText(transcript, 4500);
+    // Upload each chunk to R2 (chunks bucket) and collect URLs
+    const ttsChunkUrls = await Promise.all(
+      finalChunks.map(async (chunk, index) => {
+        const localPath = path.join(storageDir, `chunk-${index}.txt`);
+        fs.writeFileSync(localPath, chunk);
+        const r2Url = await uploadChunksToR2(localPath, `raw-text/${sessionId}/chunk-${index}.txt`);
+        return r2Url;
+      })
+    );
 
-    // Save transcript
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
-    fs.writeFileSync(transcriptPath, transcript);
+    // Build & clean full transcript
+    const fullTranscript = finalChunks.join('\n\n');
+    const cleanedTranscript = cleanTranscript(fullTranscript);
 
-    // Save chunks JSON
-    const finalChunksPath = path.join(storageDir, 'final-chunks.json');
-    fs.writeFileSync(finalChunksPath, JSON.stringify(finalChunks, null, 2));
+    // Save transcript locally and upload to transcripts bucket
+    const transcriptPath = path.join(storageDir, 'transcript.txt');
+    fs.writeFileSync(transcriptPath, cleanedTranscript);
+    const transcriptUrl = await uploadToR2(transcriptPath, `transcripts/${sessionId}/transcript.txt`);
 
-    res.json({
+    // Generate episode metadata
+    const titleRaw = await getTitleDescriptionPrompt(cleanedTranscript);
+    const description = await getTitleDescriptionPrompt(cleanedTranscript);
+    const keywordsRaw = await getSEOKeywordsPrompt(cleanedTranscript);
+    const artworkPrompt = await getArtworkPrompt(cleanedTranscript);
+
+    const tones = [
+      'cheeky',
+      'reflective',
+      'high-energy',
+      'dry as hell',
+      'overly sincere',
+      'witty',
+      'oddly poetic'
+    ];
+    const tone = tones[Math.floor(Math.random() * tones.length)];
+
+    // Build response
+    const output = {
       sessionId,
-      transcriptPath,
-      finalChunksPath,
-      chunks: finalChunks
-    });
+      tone,
+      title: formatTitle(titleRaw),
+      description,
+      keywords: normaliseKeywords(keywordsRaw),
+      artworkPrompt,
+      sponsor,
+      transcript: cleanedTranscript,
+      transcriptUrl,
+      ttsChunks: ttsChunkUrls
+    };
+
+    res.json(output);
 
   } catch (err) {
     console.error('❌ Compose error:', err);
-    res.status(500).json({
-      error: 'Failed to compose final chunks',
-      details: err.message
-    });
+    res.status(500).json({ error: 'Failed to compose final chunks' });
   }
 });
 
