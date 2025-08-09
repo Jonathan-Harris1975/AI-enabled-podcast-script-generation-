@@ -25,11 +25,15 @@ router.post('/', async (req, res) => {
     let rawOutro = completion.choices[0].message.content.trim();
 
     // Process the raw outro text with chunkText if needed
-    // Note: You might want to adjust this based on how chunkText should be used
     const processedOutro = await chunkText(rawOutro);
-
+    
+    // Ensure we're working with a string
+    const outroText = typeof processedOutro === 'string' 
+      ? processedOutro 
+      : JSON.stringify(processedOutro);
+    
     // Remove line breaks (flatten to single paragraph)
-    const finalOutro = processedOutro.replace(/\n+/g, ' ');
+    const finalOutro = outroText.replace(/\n+/g, ' ');
 
     const storageDir = path.resolve('/mnt/data', sessionId);
     fs.mkdirSync(storageDir, { recursive: true });
