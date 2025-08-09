@@ -27,19 +27,15 @@ router.post('/', async (req, res) => {
       messages: [{ role: 'user', content: inputPrompt }]
     });
 
+    // Split on paragraphs or double newlines, trim each chunk
     let chunks = completion.choices[0].message.content
       .split(/\n\n+/)
       .filter(Boolean)
       .map(chunk => chunk.trim());
 
-    // Enforce chunk length strictly between 3000 and 4000 characters
-    chunks = chunks.filter(chunk => {
-      const len = chunk.length;
-      return len >= 3000 && len <= 4000;
-    });
-
+    // No length filtering here — just save all chunks
     if (chunks.length === 0) {
-      throw new Error('No chunks met the character length requirement (3000-4000 characters).');
+      throw new Error('No chunks returned from the AI response.');
     }
 
     const storageDir = path.resolve('/mnt/data', sessionId);
