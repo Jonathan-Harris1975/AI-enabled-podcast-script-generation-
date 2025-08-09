@@ -1,39 +1,74 @@
-// In your main route handler:
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { openai } from '../utils/openai.js';
+import fetchFeeds from '../utils/fetchFeeds.js';
+import { saveToMemory } from '../utils/memoryCache.js';
+import { getMainPrompt } from '../utils/promptTemplates.js';
+
+const router = express.Router();
 
 router.post('/', async (req, res) => {
-  try {
-    const { rssFeedUrl, sessionId } = req.body;
+try {
+const { rssFeedUrl, sessionId } = req.body;
 
-    if (!rssFeedUrl || !sessionId) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+if (!rssFeedUrl || !sessionId) {  
+  return res.status(400).json({ error: 'Missing required fields' });  
+}  
 
-    const articles = await fetchFeeds(rssFeedUrl, { maxAgeDays: 7, limit: 10 }); // keep it manageable
+const articles = await fetchFeeds(rssFeedUrl, { maxAgeDays: 7, limit: 40 });  
+const articleTextArray = articles.map(  
+  (a, i) => `${i + 1}. ${a.title} - ${a.summary}`  
+);  
 
-    const chunks = [];
+const inputPrompt = getMainPrompt(articleTextArray);  
 
-    for (let i = 0; i < articles.length; i++) {
-      const prompt = getSingleStoryPrompt(`${articles[i].title} - ${articles[i].summary}`);
+const completion = await openai.chat.completions.create({  
+  model: 'gpt-4',  
+  temperature: 0.75,  
+  messages: [{ role: 'user', content: inputPrompt }]  
+});  
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
-        temperature: 0.75,
-        messages: [{ role: 'user', content: prompt }]
-      });
+let chunks = completion.choices[0].message.content  
+  .split(/\n\n+/)  
+  .filter(Boolean)  
+  .map(chunk => chunk.trim());  
 
-      const chunk = completion.choices[0].message.content.trim();
+// Adjust filter to match your desired length window  
+chunks = chunks.filter(chunk => {  
+  const len = chunk.length;  
+  return len >= 3000 && len <= 4000;  
+});  
 
-      if (chunk.length < 3000) {
-        // Optionally, regenerate with a prompt to add more detail or commentary
-        // Or accept as is if you want to avoid infinite loops
-      } else if (chunk.length > 4000) {
-        // Optionally truncate or ask for a shorter rewrite
-      }
+if (chunks.length === 0) {  
+  throw new Error('No chunks met the character length requirement (3000-4000 characters).');  
+}  
 
-      chunks.push(chunk);
-    }
+const storageDir = path.resolve('/mnt/data', sessionId);  
+fs.mkdirSync(storageDir, { recursive: true });  
 
-    if (chunks.length === 0) {
+chunks.forEach((chunk, i) => {  
+  const filePath = path.join(storageDir, `raw-chunk-${i + 1}.txt`);  
+  fs.writeFileSync(filePath, chunk);  
+});  
+
+await saveToMemory(sessionId, 'mainChunks', chunks);  
+
+const chunkPaths = chunks.map((_, i) => `/mnt/data/${sessionId}/raw-chunk-${i + 1}.txt`);  
+
+res.json({  
+  sessionId,  
+  chunkPaths  
+});
+
+} catch (err) {
+console.error('❌ Main route error:', err);
+res.status(500).json({ error: 'Podcast generation failed', details: err.message });
+}
+});
+
+export default router;
+
       throw new Error('No chunks generated.');
     }
 
