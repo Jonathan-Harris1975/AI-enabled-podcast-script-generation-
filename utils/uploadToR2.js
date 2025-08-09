@@ -42,14 +42,3 @@ export default async function uploadToR2(localFilePath, remoteKey, bucket, baseU
 
   return `${cleanBaseUrl}${cleanKey}`;
 }
-  await s3.send(command);
-
-  // Ensure slash between base URL and remoteKey
-  const baseUrl = R2_PUBLIC_BASE_URL.endsWith('/')
-    ? R2_PUBLIC_BASE_URL.slice(0, -1)
-    : R2_PUBLIC_BASE_URL;
-  const keyPath = remoteKey.startsWith('/') ? remoteKey : `/${remoteKey}`;
-
-  const publicUrl = `${baseUrl}${keyPath}`;
-  return publicUrl;
-}
