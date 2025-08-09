@@ -11,9 +11,6 @@ import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
   getArtworkPrompt,
-  getIntroPrompt,
-  getMainPrompt,
-  getOutroPromptFull,
 } from '../utils/podcastHelpers.js';
 import getTone from '../utils/toneSetter.js';
 
@@ -40,54 +37,63 @@ router.post('/', async (req, res) => {
     }
 
     const storageDir = path.resolve('/mnt/data', sessionId);
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
+    const introPath = path.join(storageDir, 'intro.txt');
+    const outroPath = path.join(storageDir, 'outro.txt');
+    const chunksDir = path.join(storageDir, 'chunks');
 
-    if (!fs.existsSync(transcriptPath)) {
-      return res.status(404).json({ error: 'Transcript file not found' });
+    if (!fs.existsSync(introPath) || !fs.existsSync(outroPath)) {
+      return res.status(404).json({ error: 'Intro or outro files not found' });
     }
 
-    // Read raw transcript from disk
-    const rawTranscript = fs.readFileSync(transcriptPath, 'utf-8');
+    if (!fs.existsSync(chunksDir)) {
+      return res.status(404).json({ error: 'Chunks directory not found' });
+    }
 
-    // Pick a random tone for the whole episode
-    const tone = getTone();
+    // Read intro and outro
+    const introText = fs.readFileSync(introPath, 'utf-8').trim();
+    const outroText = fs.readFileSync(outroPath, 'utf-8').trim();
 
-    // Generate intro prompt and get intro text (no editing)
-    const introPrompt = getIntroPrompt({
-      hostName: 'Jonathan Harris',
-      weatherSummary: 'Typical UK weather, unpredictable as ever',
-      turingQuote: 'A computer would deserve to be called intelligent if it could deceive a human into believing that it was human.'
-    }, tone);
-    const introText = await askOpenAI(introPrompt);
+    // Read all chunk files (assumes named chunk-1.txt, chunk-2.txt, ...)
+    const chunkFiles = fs.readdirSync(chunksDir)
+      .filter(f => f.startsWith('chunk-') && f.endsWith('.txt'))
+      .sort((a, b) => {
+        const aNum = parseInt(a.match(/chunk-(\d+)\.txt/)[1], 10);
+        const bNum = parseInt(b.match(/chunk-(\d+)\.txt/)[1], 10);
+        return aNum - bNum;
+      });
 
-    // Generate main prompt and get main text (to be edited)
-    const mainPrompt = getMainPrompt([rawTranscript], tone);
-    let mainText = await askOpenAI(mainPrompt);
+    if (chunkFiles.length === 0) {
+      return res.status(404).json({ error: 'No chunk files found' });
+    }
 
-    // Edit and format main text only
-    mainText = await editAndFormat(mainText);
-    if (!mainText || !mainText.trim()) {
+    // Read and concatenate all chunk texts
+    let rawMainText = '';
+    for (const file of chunkFiles) {
+      const chunkText = fs.readFileSync(path.join(chunksDir, file), 'utf-8');
+      rawMainText += chunkText + '\n\n';
+    }
+
+    // Run editAndFormat only on main text
+    const editedMainText = await editAndFormat(rawMainText);
+    if (!editedMainText || !editedMainText.trim()) {
       return res.status(400).json({ error: 'Main script is empty after formatting' });
     }
 
-    // Generate outro prompt and get outro text (no editing)
-    const outroText = await getOutroPromptFull(tone).then(prompt => askOpenAI(prompt));
+    // Combine intro, edited main, outro into full transcript
+    const fullTranscript = [introText, editedMainText.trim(), outroText].join('\n\n');
 
-    // Combine all parts into final transcript
-    const fullTranscript = [introText.trim(), mainText.trim(), outroText.trim()].join('\n\n');
-
-    // Save full transcript locally (overwrite or new file)
+    // Save full transcript locally
     const finalTranscriptPath = path.join(storageDir, 'final-full-transcript.txt');
     fs.writeFileSync(finalTranscriptPath, fullTranscript, 'utf-8');
 
-    // Split full transcript into chunks (4500 chars max)
+    // Split full transcript into chunks (max 4500 chars)
     const chunks = splitPlainText(fullTranscript, 4500);
 
     // Upload full transcript to R2
     const transcriptKey = `final-text/${sessionId}/final-full-transcript.txt`;
     const transcriptUrl = await uploadToR2(finalTranscriptPath, transcriptKey);
 
-    // Upload chunks to R2
+    // Upload each chunk to R2
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -104,6 +110,7 @@ router.post('/', async (req, res) => {
     // Generate title & description from full transcript
     const titleDescPrompt = getTitleDescriptionPrompt(fullTranscript);
     const titleDescResponse = await askOpenAI(titleDescPrompt);
+
     let title, description;
     try {
       ({ title, description } = JSON.parse(titleDescResponse));
@@ -136,7 +143,7 @@ router.post('/', async (req, res) => {
         seoKeywords,
         artworkPrompt: artworkDescription,
       },
-      tone,
+      tone: getTone(),
     });
   } catch (error) {
     console.error('Compose error:', error);
