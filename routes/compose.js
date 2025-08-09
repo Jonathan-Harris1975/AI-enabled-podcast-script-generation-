@@ -11,11 +11,9 @@ import {
   getTitleDescriptionPrompt,
   getSEOKeywordsPrompt,
   getArtworkPrompt,
-  getIntroPrompt,
-  getMainPrompt,
-  getOutroPromptFull,
+  getMainPrompt, // keep only if you still use it to generate prompt
 } from '../utils/podcastHelpers.js';
-import { getRandomTone } from '../utils/toneSetter.js';  // Correct named import
+import { getRandomTone } from '../utils/toneSetter.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -40,47 +38,36 @@ router.post('/', async (req, res) => {
     }
 
     const storageDir = path.resolve('/mnt/data', sessionId);
-    const transcriptPath = path.join(storageDir, 'final-transcript.txt');
 
-    if (!fs.existsSync(transcriptPath)) {
-      return res.status(404).json({ error: 'Transcript file not found' });
-    }
-
-    // Read raw transcript from disk
-    const rawTranscript = fs.readFileSync(transcriptPath, 'utf-8');
-
-    // Pick a random tone for the whole episode
-    const tone = getRandomTone();
-
-    // Read intro and outro that were already created (no generation)
+    // Paths for intro, main, outro - already generated previously
     const introPath = path.join(storageDir, 'intro.txt');
+    const mainPath = path.join(storageDir, 'main.txt');
     const outroPath = path.join(storageDir, 'outro.txt');
 
-    if (!fs.existsSync(introPath) || !fs.existsSync(outroPath)) {
-      return res.status(404).json({ error: 'Intro or outro file not found' });
+    // Verify all parts exist
+    if (!fs.existsSync(introPath) || !fs.existsSync(mainPath) || !fs.existsSync(outroPath)) {
+      return res.status(404).json({ error: 'One or more transcript parts not found (intro, main, outro)' });
     }
 
+    // Read raw parts
     const introText = fs.readFileSync(introPath, 'utf-8').trim();
+    let mainText = fs.readFileSync(mainPath, 'utf-8').trim();
     const outroText = fs.readFileSync(outroPath, 'utf-8').trim();
 
-    // Generate main prompt and get main text (to be edited)
-    const mainPrompt = getMainPrompt([rawTranscript], tone);
-    let mainText = await askOpenAI(mainPrompt);
-
-    // Edit and format main text only
+    // Edit & format main text only
     mainText = await editAndFormat(mainText);
     if (!mainText || !mainText.trim()) {
       return res.status(400).json({ error: 'Main script is empty after formatting' });
     }
 
-    // Combine all parts into final transcript
+    // Combine into full transcript
     const fullTranscript = [introText, mainText, outroText].join('\n\n');
 
-    // Save full transcript locally (overwrite or new file)
+    // Save full transcript locally
     const finalTranscriptPath = path.join(storageDir, 'final-full-transcript.txt');
     fs.writeFileSync(finalTranscriptPath, fullTranscript, 'utf-8');
 
-    // Split full transcript into chunks (4500 chars max)
+    // Split full transcript into chunks (max 4500 chars)
     const chunks = splitPlainText(fullTranscript, 4500);
 
     // Upload full transcript to R2
@@ -123,7 +110,10 @@ router.post('/', async (req, res) => {
     const artworkPrompt = getArtworkPrompt(description);
     const artworkDescription = (await askOpenAI(artworkPrompt)).trim();
 
-    // Respond with everything
+    // Pick a random tone (optional)
+    const tone = getRandomTone();
+
+    // Respond with all results
     res.json({
       sessionId,
       transcriptUrl,
