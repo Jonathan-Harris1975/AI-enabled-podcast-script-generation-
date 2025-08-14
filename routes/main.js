@@ -1,7 +1,7 @@
-// routes/main.js
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { openai } from '../utils/openai.js';
 import fetchFeeds from '../utils/fetchFeeds.js';
 import { getMainPrompt } from '../utils/promptTemplates.js';
 
@@ -20,25 +20,34 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No feed items found in the last 7 days' });
     }
 
-    // Base output folder: raw-text/raw-text/<sessionId>
-    const outputDir = path.resolve('/opt/render/project/src/raw-text/raw-text', sessionId);
-    fs.mkdirSync(outputDir, { recursive: true });
+    // Create session directory in persistent storage
+    const storageDir = path.resolve('/mnt/data', sessionId);
+    fs.mkdirSync(storageDir, { recursive: true });
 
-    // Determine starting chunk number (auto-increment if folder exists)
-    const existingFiles = fs.readdirSync(outputDir)
+    // Determine starting chunk number
+    const existingFiles = fs.readdirSync(storageDir)
       .filter(f => f.startsWith('chunk-') && f.endsWith('.txt'));
     let chunkNumber = existingFiles.length + 1;
 
     const filePaths = [];
 
-    // Save each article as a separate chunk
+    // Process each feed item
     for (const item of feedItems) {
       const mainPrompt = getMainPrompt([`${item.title}\n${item.summary}`]);
 
-      const fileName = `chunk-${chunkNumber}.txt`;
-      const filePath = path.join(outputDir, fileName);
+      // Get completion from OpenAI
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4',
+        temperature: 0.75,
+        messages: [{ role: 'user', content: mainPrompt }]
+      });
 
-      fs.writeFileSync(filePath, mainPrompt, 'utf8');
+      const content = completion.choices[0].message.content.trim();
+
+      // Save the completion result (not just the prompt)
+      const fileName = `chunk-${chunkNumber}.txt`;
+      const filePath = path.join(storageDir, fileName);
+      fs.writeFileSync(filePath, content, 'utf8');
       filePaths.push(filePath);
 
       chunkNumber++;
