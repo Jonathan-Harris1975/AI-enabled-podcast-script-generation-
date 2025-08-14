@@ -1,73 +1,62 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { openai } from '../utils/openai.js';
 import fetchFeeds from '../utils/fetchFeeds.js';
-import { saveToMemory } from '../utils/memoryCache.js';
-import { getMainPrompt } from '../utils/promptTemplates.js';
+import getMainPrompt from '../prompts/getMainPrompt.js';
 import chunkText from '../utils/chunkText.js';
+import OpenAI from 'openai';
 
 const router = express.Router();
-const sessionsDir = path.resolve('./sessions');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Directory for persistent storage
+const persistentDir = path.join(process.cwd(), 'sessions');
+if (!fs.existsSync(persistentDir)) {
+  fs.mkdirSync(persistentDir);
+}
 
 router.post('/', async (req, res) => {
   try {
-    const { rssFeedUrl, sessionId } = req.body;
-
-    if (!rssFeedUrl || !sessionId) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    const { feedUrl, sessionId } = req.body;
+    if (!feedUrl || !sessionId) {
+      return res.status(400).json({ error: 'feedUrl and sessionId are required' });
     }
 
-    // Pull articles
-    const articles = await fetchFeeds(rssFeedUrl, { maxAgeDays: 7, limit: 40 });
-    if (!articles.length) {
-      return res.status(404).json({ error: 'No articles found in feed' });
+    const sessionDir = path.join(persistentDir, sessionId);
+    if (!fs.existsSync(sessionDir)) {
+      fs.mkdirSync(sessionDir, { recursive: true });
     }
 
-    // Prepare article text
-    const articleTextArray = articles.map(
-      (a, i) => `${i + 1}. ${a.title} - ${a.summary}`
-    );
+    // Fetch up to 40 feed items with improved date handling
+    const items = await fetchFeeds(feedUrl, { limit: 40 });
 
-    // Generate main podcast script
-    const mainPrompt = getMainPrompt(articleTextArray);
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: mainPrompt }]
-    });
+    const savedFiles = [];
 
-    const fullScript = completion.choices?.[0]?.message?.content?.trim();
-    if (!fullScript) {
-      return res.status(500).json({ error: 'Main script generation failed' });
+    for (const [index, item] of items.entries()) {
+      // Grab content snippet or fallback
+      const articleText = item.contentSnippet || item.content || item.summary || '';
+      const prompt = getMainPrompt(articleText);
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const output = completion.choices[0]?.message?.content || '';
+      const chunks = chunkText(output);
+
+      chunks.forEach((chunk, chunkIndex) => {
+        const filename = `main-${index + 1}-${chunkIndex + 1}.txt`;
+        const filePath = path.join(sessionDir, filename);
+        fs.writeFileSync(filePath, chunk);
+        savedFiles.push(filename);
+      });
     }
 
-    // Chunk into TTS-friendly parts
-    const chunks = chunkText(fullScript, 4800);
-
-    // Ensure session folder exists
-    const sessionFolder = path.join(sessionsDir, sessionId);
-    fs.mkdirSync(sessionFolder, { recursive: true });
-
-    // Save chunks to disk
-    const chunkPaths = [];
-    chunks.forEach((chunk, idx) => {
-      const chunkFile = path.join(sessionFolder, `chunk_${idx + 1}.txt`);
-      fs.writeFileSync(chunkFile, chunk, 'utf-8');
-      chunkPaths.push(chunkFile);
-    });
-
-    // Save to memory
-    await saveToMemory(sessionId, { chunks });
-
-    res.json({
-      sessionId,
-      chunksPath: chunkPaths,
-      chunks
-    });
-  } catch (err) {
-    console.error('Main endpoint error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json({ files: savedFiles });
+  } catch (error) {
+    console.error('Error generating main scripts:', error);
+    res.status(500).json({ error: 'Failed to generate main scripts' });
   }
 });
 
