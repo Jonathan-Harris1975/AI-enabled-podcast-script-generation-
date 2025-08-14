@@ -1,65 +1,35 @@
+import express from 'express';
+import { PORT, SESSION_CACHE_PATH } from './config.js';
 import fs from 'fs';
-import path from 'path';
+import MemoryCache from './utils/memoryCache.js';
 
-const cacheDir = '/mnt/data/session_cache';
+const app = express();
 
-// Ensure the cache directory exists with full permissions
-fs.mkdirSync(cacheDir, { recursive: true, mode: 0o777 });
+// Ensure cache dir exists
+fs.mkdirSync(SESSION_CACHE_PATH, { recursive: true, mode: 0o777 });
+console.log(`✅ session_cache directory ready at ${SESSION_CACHE_PATH}`);
 
-/**
- * Simple in-memory cache with optional file storage
- */
-export default class MemoryCache {
-    constructor() {
-        this.cache = {};
-    }
+app.use(express.json());
 
-    set(key, value) {
-        this.cache[key] = value;
-        const filePath = path.join(cacheDir, `${key}.json`);
-        fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
-    }
+// Example health check
+app.get('/', (req, res) => {
+    res.send('Podcast Script Generation Service is running.');
+});
 
-    get(key) {
-        if (this.cache[key]) {
-            return this.cache[key];
-        }
-        const filePath = path.join(cacheDir, `${key}.json`);
-        if (fs.existsSync(filePath)) {
-            try {
-                const data = fs.readFileSync(filePath, 'utf8');
-                const parsed = JSON.parse(data);
-                this.cache[key] = parsed;
-                return parsed;
-            } catch (err) {
-                console.error(`Failed to read cache file for key: ${key}`, err);
-                return null;
-            }
-        }
-        return null;
-    }
+// Example cache endpoints
+const cache = new MemoryCache();
 
-    clear(key) {
-        delete this.cache[key];
-        const filePath = path.join(cacheDir, `${key}.json`);
-        if (fs.existsSync(filePath)) {
-            try {
-                fs.unlinkSync(filePath);
-            } catch (err) {
-                console.error(`Failed to delete cache file for key: ${key}`, err);
-            }
-        }
-    }
+app.post('/cache', async (req, res) => {
+    const { key, value } = req.body;
+    await cache.set(key, value);
+    res.json({ status: 'ok' });
+});
 
-    clearAll() {
-        this.cache = {};
-        fs.readdirSync(cacheDir).forEach(file => {
-            const filePath = path.join(cacheDir, file);
-            try {
-                fs.unlinkSync(filePath);
-            } catch (err) {
-                console.error(`Failed to delete cache file: ${filePath}`, err);
-            }
-        });
-    }
-}
+app.get('/cache/:key', async (req, res) => {
+    const value = await cache.get(req.params.key);
+    res.json({ value });
+});
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
