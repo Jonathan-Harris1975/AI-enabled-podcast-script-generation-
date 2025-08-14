@@ -1,6 +1,6 @@
 // routes/main.js
 import express from 'express';
-import fs from 'fs/promises';
+import fs from 'fs';
 import path from 'path';
 import fetchFeeds from '../utils/fetchFeeds.js';
 import { getMainPrompt } from '../utils/promptTemplates.js';
@@ -11,40 +11,41 @@ router.post('/', async (req, res) => {
   try {
     const { feedUrl, sessionId } = req.body;
 
-    if (!feedUrl) {
-      return res.status(400).json({ success: false, error: 'feedUrl is required' });
-    }
+    if (!feedUrl) return res.status(400).json({ error: 'Missing feedUrl' });
+    if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-    if (!sessionId) {
-      return res.status(400).json({ success: false, error: 'sessionId is required' });
-    }
-
-    // Fetch RSS feed items
+    // Fetch RSS items
     const feedItems = await fetchFeeds(feedUrl);
-
     if (!feedItems.length) {
-      return res.status(400).json({ success: false, error: 'No feed items found in the last 7 days' });
+      return res.status(400).json({ error: 'No feed items found in the last 7 days' });
     }
 
-    // Convert feed objects into plain strings for getMainPrompt
-    const articleTextArray = feedItems.map(item => `${item.title}\n${item.summary}`);
+    // Base output folder: raw-text/raw-text/<sessionId>
+    const outputDir = path.resolve('/opt/render/project/src/raw-text/raw-text', sessionId);
+    fs.mkdirSync(outputDir, { recursive: true });
 
-    // Generate main prompt only
-    const mainPrompt = getMainPrompt(articleTextArray);
+    const filePaths = [];
 
-    // Save results to disk in session-specific folder
-    const outputDir = path.resolve('./podcastOutputs', sessionId);
-    await fs.mkdir(outputDir, { recursive: true });
+    // Save each article as a separate chunk
+    for (let i = 0; i < feedItems.length; i++) {
+      const item = feedItems[i];
+      const mainPrompt = getMainPrompt([`${item.title}\n${item.summary}`]);
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const outputFile = path.join(outputDir, `mainPrompt_${timestamp}.txt`);
+      const fileName = `chunk-${i + 1}.txt`;
+      const filePath = path.join(outputDir, fileName);
 
-    await fs.writeFile(outputFile, mainPrompt, 'utf8');
+      fs.writeFileSync(filePath, mainPrompt, 'utf8');
+      filePaths.push(filePath);
+    }
 
-    res.json({ success: true, file: outputFile, content: mainPrompt });
+    res.json({
+      sessionId,
+      files: filePaths
+    });
+
   } catch (err) {
-    console.error('Error generating main prompt:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('❌ Main prompt generation failed:', err);
+    res.status(500).json({ error: 'Failed to generate main prompts' });
   }
 });
 
