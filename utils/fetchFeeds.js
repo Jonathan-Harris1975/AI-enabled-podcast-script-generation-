@@ -1,40 +1,31 @@
-// routes/main.js
-import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
-import fetchFeeds from '../utils/fetchFeeds.js';
-import { getMainPrompt, getIntroPrompt, getOutroPromptFull } from '../utils/promptTemplates.js';
+// utils/fetchFeeds.js
+import Parser from 'rss-parser';
+const parser = new Parser();
 
-const router = express.Router();
-
-router.post('/generate', async (req, res) => {
+export default async function fetchFeeds(feedUrl) {
   try {
-    const { feedUrl, weatherSummary, turingQuote } = req.body;
+    const feed = await parser.parseURL(feedUrl);
 
-    if (!feedUrl) {
-      return res.status(400).json({ success: false, error: 'feedUrl is required' });
-    }
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Fetch RSS feed items
-    const feedItems = await fetchFeeds(feedUrl);
+    const filteredItems = feed.items
+      .filter(item => {
+        const pubDate = new Date(item.pubDate || item.isoDate || '');
+        return pubDate >= sevenDaysAgo && pubDate <= now;
+      })
+      .slice(0, 40)
+      .map(item => ({
+        title: item.title || 'Untitled',
+        summary: item.contentSnippet?.slice(0, 400) || 'No summary available.'
+      }));
 
-    if (!feedItems.length) {
-      return res.status(400).json({ success: false, error: 'No feed items found in the last 7 days' });
-    }
-
-    // Convert feed objects into plain strings for getMainPrompt
-    const articleTextArray = feedItems.map(item => `${item.title}\n${item.summary}`);
-
-    // Generate prompts
-    const introPrompt = getIntroPrompt({ weatherSummary: weatherSummary || 'the usual British drizzle', turingQuote: turingQuote || 'Machines take me by surprise with great frequency.' });
-    const mainPrompt = getMainPrompt(articleTextArray);
-    const outroPrompt = await getOutroPromptFull();
-
-    // Save results to disk
-    const outputDir = path.resolve('./podcastOutputs');
-    await fs.mkdir(outputDir, { recursive: true });
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return filteredItems;
+  } catch (err) {
+    console.error('❌ Failed to fetch or parse RSS feed:', err.message);
+    return [];
+  }
+}    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const outputFile = path.join(outputDir, `podcast_${timestamp}.txt`);
 
     const fullContent = `${introPrompt}\n\n${mainPrompt}\n\n${outroPrompt}`;
