@@ -1,0 +1,24 @@
+import { Router } from "express";
+import health from "./health.js";
+import intro from "./intro.js";
+import main from "./main.js";
+import outro from "./outro.js";
+import compose from "./compose.js";
+import clearSession from "./clear-session.js";
+
+export const router = Router();
+
+router.use("/health", health);
+router.use("/intro", intro);
+router.use("/main", main);
+router.use("/outro", outro);
+router.use("/compose", compose);
+router.use("/clear-session", clearSession);
+
+// root convenience
+router.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    endpoints: ["/health", "/intro", "/main", "/outro", "/compose", "/clear-session"]
+  });
+});
