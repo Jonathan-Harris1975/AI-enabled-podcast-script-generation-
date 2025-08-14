@@ -14,9 +14,9 @@ router.post('/generate', async (req, res) => {
     const { articleTextArray, weatherSummary, turingQuote } = req.body;
 
     // Generate prompts
-    const introPrompt = getIntroPrompt({ weatherSummary, turingQuote });
-    const mainPrompt = getMainPrompt(articleTextArray);
-    const outroPrompt = await getOutroPromptFull();
+    
+    const mainPrompt = getMainPrompt(articleTextArray)
+    
 
     // Save results to persistent storage (disk)
     const outputDir = path.resolve('./podcastOutputs');
@@ -25,7 +25,7 @@ router.post('/generate', async (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const outputFile = path.join(outputDir, `podcast_${timestamp}.txt`);
 
-    const fullContent = `${introPrompt}\n\n${mainPrompt}\n\n${outroPrompt}`;
+    const fullContent = `${mainPrompt}`;
     await fs.writeFile(outputFile, fullContent, 'utf8');
 
     res.json({ success: true, file: outputFile, content: fullContent });
