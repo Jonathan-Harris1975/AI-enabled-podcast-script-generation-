@@ -1,50 +1,73 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import fetch from 'node-fetch';
-import xml2js from 'xml2js';
+import { openai } from '../utils/openai.js';
+import fetchFeeds from '../utils/fetchFeeds.js';
+import { saveToMemory } from '../utils/memoryCache.js';
+import { getMainPrompt } from '../utils/promptTemplates.js';
+import chunkText from '../utils/chunkText.js';
 
 const router = express.Router();
+const sessionsDir = path.resolve('./sessions');
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, rssFeedUrl } = req.body;
+    const { rssFeedUrl, sessionId } = req.body;
 
-    if (!sessionId || !rssFeedUrl) {
-      return res.status(400).json({ error: 'Missing sessionId or rssFeedUrl' });
+    if (!rssFeedUrl || !sessionId) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Fetch RSS feed
-    const rssResponse = await fetch(rssFeedUrl);
-    const rssXml = await rssResponse.text();
+    // Pull articles
+    const articles = await fetchFeeds(rssFeedUrl, { maxAgeDays: 7, limit: 40 });
+    if (!articles.length) {
+      return res.status(404).json({ error: 'No articles found in feed' });
+    }
 
-    // Parse RSS
-    const parser = new xml2js.Parser();
-    const rssData = await parser.parseStringPromise(rssXml);
+    // Prepare article text
+    const articleTextArray = articles.map(
+      (a, i) => `${i + 1}. ${a.title} - ${a.summary}`
+    );
 
-    // Example: create main text from titles + descriptions of the first few items
-    const items = rssData.rss.channel[0].item || [];
-    let mainText = 'Latest updates from the RSS feed:\n\n';
-    items.slice(0, 5).forEach((item, idx) => {
-      const title = item.title ? item.title[0] : 'No title';
-      const description = item.description ? item.description[0] : 'No description';
-      mainText += `${idx + 1}. ${title}\n${description}\n\n`;
+    // Generate main podcast script
+    const mainPrompt = getMainPrompt(articleTextArray);
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      temperature: 0.75,
+      messages: [{ role: 'user', content: mainPrompt }]
     });
 
-    // Save to persistent disk
-    const sessionDir = path.resolve('/mnt/data', sessionId);
-    if (!fs.existsSync(sessionDir)) {
-      fs.mkdirSync(sessionDir, { recursive: true });
+    const fullScript = completion.choices?.[0]?.message?.content?.trim();
+    if (!fullScript) {
+      return res.status(500).json({ error: 'Main script generation failed' });
     }
-    fs.writeFileSync(path.join(sessionDir, 'main.txt'), mainText, 'utf-8');
+
+    // Chunk into TTS-friendly parts
+    const chunks = chunkText(fullScript, 4800);
+
+    // Ensure session folder exists
+    const sessionFolder = path.join(sessionsDir, sessionId);
+    fs.mkdirSync(sessionFolder, { recursive: true });
+
+    // Save chunks to disk
+    const chunkPaths = [];
+    chunks.forEach((chunk, idx) => {
+      const chunkFile = path.join(sessionFolder, `chunk_${idx + 1}.txt`);
+      fs.writeFileSync(chunkFile, chunk, 'utf-8');
+      chunkPaths.push(chunkFile);
+    });
+
+    // Save to memory
+    await saveToMemory(sessionId, { chunks });
 
     res.json({
-      status: 'success',
-      file: `/mnt/data/${sessionId}/main.txt`
+      sessionId,
+      chunksPath: chunkPaths,
+      chunks
     });
-  } catch (error) {
-    console.error('Error generating main section:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
+  } catch (err) {
+    console.error('Main endpoint error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
