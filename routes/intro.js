@@ -6,7 +6,6 @@ import { clearMemory, saveToMemory } from '../utils/memoryCache.js';
 import { getIntroPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
-const sessionsDir = path.resolve('./sessions');
 
 router.post('/', async (req, res) => {
   try {
@@ -35,12 +34,10 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'Intro generation failed' });
     }
 
-    // Ensure session folder exists
-    const sessionFolder = path.join(sessionsDir, sessionId);
-    fs.mkdirSync(sessionFolder, { recursive: true });
-
-    // Save to disk
-    const introPath = path.join(sessionFolder, 'intro.txt');
+    // Save to persistent disk (matching outro.js approach)
+    const storageDir = path.resolve('/mnt/data', sessionId);
+    fs.mkdirSync(storageDir, { recursive: true });
+    const introPath = path.join(storageDir, 'intro.txt');
     fs.writeFileSync(introPath, introText, 'utf-8');
 
     // Store in memory
