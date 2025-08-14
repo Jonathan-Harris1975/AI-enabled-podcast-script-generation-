@@ -1,57 +1,50 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { openai } from '../utils/openai.js';
-import fetchFeeds from '../utils/fetchFeeds.js';
-import { saveToMemory } from '../utils/memoryCache.js';
-import { getMainPrompt } from '../utils/promptTemplates.js';
+import fetch from 'node-fetch';
+import xml2js from 'xml2js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { rssFeedUrl, sessionId } = req.body;
+    const { sessionId, rssFeedUrl } = req.body;
 
-    if (!rssFeedUrl || !sessionId) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!sessionId || !rssFeedUrl) {
+      return res.status(400).json({ error: 'Missing sessionId or rssFeedUrl' });
     }
 
-    const articles = await fetchFeeds(rssFeedUrl, { maxAgeDays: 7, limit: 40 });
-    const articleTextArray = articles.map((a, i) => `${i + 1}. ${a.title} - ${a.summary}`);
+    // Fetch RSS feed
+    const rssResponse = await fetch(rssFeedUrl);
+    const rssXml = await rssResponse.text();
 
-    const inputPrompt = getMainPrompt(articleTextArray);
+    // Parse RSS
+    const parser = new xml2js.Parser();
+    const rssData = await parser.parseStringPromise(rssXml);
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: inputPrompt }]
+    // Example: create main text from titles + descriptions of the first few items
+    const items = rssData.rss.channel[0].item || [];
+    let mainText = 'Latest updates from the RSS feed:\n\n';
+    items.slice(0, 5).forEach((item, idx) => {
+      const title = item.title ? item.title[0] : 'No title';
+      const description = item.description ? item.description[0] : 'No description';
+      mainText += `${idx + 1}. ${title}\n${description}\n\n`;
     });
 
-    let chunks = completion.choices[0].message.content
-      .split(/\n\n+/)
-      .filter(Boolean)
-      .map(chunk => chunk.trim());
-
-    if (chunks.length === 0) {
-      throw new Error('No chunks returned from the AI response.');
+    // Save to persistent disk
+    const sessionDir = path.resolve('/mnt/data', sessionId);
+    if (!fs.existsSync(sessionDir)) {
+      fs.mkdirSync(sessionDir, { recursive: true });
     }
+    fs.writeFileSync(path.join(sessionDir, 'main.txt'), mainText, 'utf-8');
 
-    const storageDir = path.resolve('/mnt/data', sessionId);
-    fs.mkdirSync(storageDir, { recursive: true });
-
-    chunks.forEach((chunk, i) => {
-      const filePath = path.join(storageDir, `raw-chunk-${i + 1}.txt`);
-      fs.writeFileSync(filePath, chunk);
+    res.json({
+      status: 'success',
+      file: `/mnt/data/${sessionId}/main.txt`
     });
-
-    await saveToMemory(sessionId, 'mainChunks', chunks);
-
-    const chunkPaths = chunks.map((_, i) => `/mnt/data/${sessionId}/raw-chunk-${i + 1}.txt`);
-
-    res.json({ sessionId, chunkPaths });
-  } catch (err) {
-    console.error('❌ Main route error:', err);
-    res.status(500).json({ error: 'Podcast generation failed', details: err.message });
+  } catch (error) {
+    console.error('Error generating main section:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 });
 
