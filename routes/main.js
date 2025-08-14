@@ -1,7 +1,7 @@
 // routes/main.js
 
 // Use named imports instead of default
-import { getMainPrompt, getIntroPrompt, getOutroPromptFull } from '../utils/promptTemplates.js';
+import { getMainPrompt} from '../utils/promptTemplates.js';
 import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
@@ -11,7 +11,7 @@ const router = express.Router();
 // Example route to generate main podcast script
 router.post('/main', async (req, res) => {
   try {
-    const { articleTextArray, weatherSummary, turingQuote } = req.body;
+    const { articleTextArray} = req.body;
 
     // Generate prompts
     
