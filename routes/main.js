@@ -9,7 +9,7 @@ import path from 'path';
 const router = express.Router();
 
 // Example route to generate main podcast script
-router.post('/generate', async (req, res) => {
+router.post('/main', async (req, res) => {
   try {
     const { articleTextArray, weatherSummary, turingQuote } = req.body;
 
