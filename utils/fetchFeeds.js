@@ -1,4 +1,3 @@
-// utils/fetchFeeds.js
 import Parser from 'rss-parser';
 const parser = new Parser();
 
@@ -25,17 +24,4 @@ export default async function fetchFeeds(feedUrl) {
     console.error('❌ Failed to fetch or parse RSS feed:', err.message);
     return [];
   }
-}    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const outputFile = path.join(outputDir, `podcast_${timestamp}.txt`);
-
-    const fullContent = `${introPrompt}\n\n${mainPrompt}\n\n${outroPrompt}`;
-    await fs.writeFile(outputFile, fullContent, 'utf8');
-
-    res.json({ success: true, file: outputFile, content: fullContent });
-  } catch (err) {
-    console.error('Error generating podcast:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-export default router;
+}
