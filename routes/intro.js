@@ -14,7 +14,7 @@ router.post('/', async (req, res) => {
     }
 
     // Example weather API call (replace with your real endpoint/key)
-    const weatherApiUrl = `https://api.weatherapi.com/v1/forecast.json?key=YOUR_API_KEY&q=London&dt=${date}`;
+    const weatherApiUrl = `https://api.weatherapi.com/v1/forecast.json?key=RAPIDAPI_KEY&q=London&dt=${date}`;
     const weatherResponse = await fetch(weatherApiUrl);
     const weatherData = await weatherResponse.json();
 
