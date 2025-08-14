@@ -7,7 +7,7 @@ import { getMainPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
 
-router.post('/generate', async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { feedUrl, sessionId } = req.body;
 
