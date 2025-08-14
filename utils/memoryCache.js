@@ -1,50 +1,65 @@
 import fs from 'fs';
 import path from 'path';
 
-const BASE_DIR = '/mnt/data/session_cache';
+const cacheDir = '/mnt/data/session_cache';
 
-function getSessionFilePath(sessionId) {
-  return path.join(BASE_DIR, `${sessionId}.json`);
-}
+// Ensure the cache directory exists with full permissions
+fs.mkdirSync(cacheDir, { recursive: true, mode: 0o777 });
 
-// Ensure the base directory exists
-if (!fs.existsSync(BASE_DIR)) {
-  fs.mkdirSync(BASE_DIR, { recursive: true });
-}
-
-export function saveToMemory(sessionId, key, value) {
-  const filePath = getSessionFilePath(sessionId);
-  let sessionData = {};
-
-  if (fs.existsSync(filePath)) {
-    try {
-      sessionData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    } catch {
-      // Corrupted file or parse failure, start fresh
-      sessionData = {};
+/**
+ * Simple in-memory cache with optional file storage
+ */
+export default class MemoryCache {
+    constructor() {
+        this.cache = {};
     }
-  }
 
-  sessionData[key] = value;
+    set(key, value) {
+        this.cache[key] = value;
+        const filePath = path.join(cacheDir, `${key}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
+    }
 
-  fs.writeFileSync(filePath, JSON.stringify(sessionData, null, 2));
-}
+    get(key) {
+        if (this.cache[key]) {
+            return this.cache[key];
+        }
+        const filePath = path.join(cacheDir, `${key}.json`);
+        if (fs.existsSync(filePath)) {
+            try {
+                const data = fs.readFileSync(filePath, 'utf8');
+                const parsed = JSON.parse(data);
+                this.cache[key] = parsed;
+                return parsed;
+            } catch (err) {
+                console.error(`Failed to read cache file for key: ${key}`, err);
+                return null;
+            }
+        }
+        return null;
+    }
 
-export function getFromMemory(sessionId, key) {
-  const filePath = getSessionFilePath(sessionId);
-  if (!fs.existsSync(filePath)) return undefined;
+    clear(key) {
+        delete this.cache[key];
+        const filePath = path.join(cacheDir, `${key}.json`);
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+            } catch (err) {
+                console.error(`Failed to delete cache file for key: ${key}`, err);
+            }
+        }
+    }
 
-  try {
-    const sessionData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    return sessionData[key];
-  } catch {
-    return undefined;
-  }
-}
-
-export function clearMemory(sessionId) {
-  const filePath = getSessionFilePath(sessionId);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
-}
+    clearAll() {
+        this.cache = {};
+        fs.readdirSync(cacheDir).forEach(file => {
+            const filePath = path.join(cacheDir, file);
+            try {
+                fs.unlinkSync(filePath);
+            } catch (err) {
+                console.error(`Failed to delete cache file: ${filePath}`, err);
+            }
+        });
+    }
+        }
