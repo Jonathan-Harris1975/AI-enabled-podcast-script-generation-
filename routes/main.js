@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import fetchFeeds from '../utils/fetchFeeds.js';
-import getMainPrompt from '../prompts/getMainPrompt.js';
+import getMainPrompt from '../utils/promptTemplates.js';
 import chunkText from '../utils/chunkText.js';
 import OpenAI from 'openai';
 
