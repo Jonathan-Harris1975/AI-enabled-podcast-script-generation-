@@ -1,40 +1,32 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import fetch from 'node-fetch';
+import { getIntroPrompt } from '../utils/promptTemplates.js';
+import { getTuringQuote } from '../utils/turingQuotes.js'; // Assuming this file exists
+import getRealWeatherSummary from '../utils/weather.js'; // <-- IMPORT THE NEW FUNCTION
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   try {
-    const { sessionId, date } = req.body;
+    console.log("Handling /intro request...");
 
-    if (!sessionId || !date) {
-      return res.status(400).json({ error: 'Missing sessionId or date' });
-    }
+    // 1. Fetch the REAL weather summary from the API.
+    //    This is an async call, so we use await.
+    const weatherSummary = await getRealWeatherSummary("London");
+    console.log(`Fetched weather: "${weatherSummary}"`);
 
-    // Example weather API call (replace with your real endpoint/key)
-    const weatherApiUrl = `https://api.weatherapi.com/v1/forecast.json?key=env.RAPIDAPI_KEY&q=London&dt=${date}`;
-    const weatherResponse = await fetch(weatherApiUrl);
-    const weatherData = await weatherResponse.json();
+    // 2. Get the Turing quote (assuming this is synchronous).
+    const turingQuote = getTuringQuote();
 
-    // Create intro text based on weather data
-    const introText = `Welcome to our podcast for ${date}. Today’s weather in London: ${weatherData.forecast.forecastday[0].day.condition.text}, ${weatherData.forecast.forecastday[0].day.avgtemp_c}°C.`;
+    // 3. Generate the intro prompt using the real weather data.
+    const prompt = getIntroPrompt({ weatherSummary, turingQuote });
 
-    // Save to persistent disk
-    const sessionDir = path.resolve('/mnt/data', sessionId);
-    if (!fs.existsSync(sessionDir)) {
-      fs.mkdirSync(sessionDir, { recursive: true });
-    }
-    fs.writeFileSync(path.join(sessionDir, 'intro.txt'), introText, 'utf-8');
+    // 4. Send the generated prompt back as the response.
+    res.json({ prompt });
 
-    res.json({
-      status: 'success',
-      file: `/mnt/data/${sessionId}/intro.txt`
-    });
   } catch (error) {
-    console.error('Error generating intro:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
+    // Pass any errors to the global error handler in index.js
+    console.error("Error in /intro route:", error);
+    next(error);
   }
 });
 
