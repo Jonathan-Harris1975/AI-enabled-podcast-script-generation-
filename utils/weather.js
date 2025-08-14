@@ -1,26 +1,50 @@
 /**
- * Fetches weather data for a given city.
- * This function is meant to be called from your front-end code.
- * It calls our own secure backend function (/api/getWeather)
- * instead of the external RapidAPI service.
+ * Fetches real weather data from the RapidAPI service.
+ * This function is designed to run on the server-side (e.g., in a Node.js script)
+ * where it can securely access environment variables.
  *
- * @param {string} city - The city for the forecast (e.g., "London").
- * @returns {Promise<object>} A promise that resolves with the weather data.
- * @throws {Error} If the city is missing or the API call fails.
+ * @param {string} city - The city to get the weather for (e.g., "London").
+ * @returns {Promise<string>} A promise that resolves to a human-readable weather summary string.
  */
-export default async function getWeatherData(city) {
-  if (!city) {
-    throw new Error("City cannot be empty.");
+export default async function getRealWeatherSummary(city) {
+  // 1. Securely access the environment variables from Render.
+  const apiKey = process.env.RAPIDAPI_KEY;
+  const apiHost = process.env.RAPIDAPI_HOST;
+
+  // 2. Validate that the server is configured correctly.
+  if (!apiKey || !apiHost) {
+    console.error("Error: Weather API credentials (RAPIDAPI_KEY, RAPIDAPI_HOST) are not set in the environment.");
+    // Return a safe, generic fallback summary.
+    return "The weather is, as ever, a topic of conversation.";
   }
 
-  // This URL points to the backend function from Part 1.
-  const response = await fetch(`/api/getWeather?city=${city}`);
-  const data = await response.json();
+  // 3. Construct the URL and options for the RapidAPI call.
+  const url = `https://${apiHost}/forecast.json?q=${city}`;
+  const options = {
+    method: 'GET',
+    headers: {
+      'x-rapidapi-key': apiKey,
+      'x-rapidapi-host': apiHost,
+    },
+  };
 
-  // If our backend returned an error, we throw it so the UI can catch it.
-  if (!response.ok) {
-    throw new Error(data.error || `Request failed with status ${response.status}`);
+  // 4. Make the API call and handle the response.
+  try {
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      // Log the error from the API for debugging but return a fallback.
+      console.error("RapidAPI Error:", data.error ? data.error.message : 'Unknown API error');
+      return "The weather forecast is currently unavailable.";
+    }
+    
+    // 5. On success, extract the relevant info and return a summary string.
+    const condition = data.forecast.forecastday[0].day.condition.text;
+    return `It’s currently ${condition.toLowerCase()} in London.`;
+
+  } catch (error) {
+    console.error("Failed to fetch weather data:", error);
+    return "The weather forecast seems to be offline at the moment.";
   }
-
-  return data;
-}
+  }
