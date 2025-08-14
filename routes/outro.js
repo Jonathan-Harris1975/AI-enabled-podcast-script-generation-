@@ -2,55 +2,43 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { openai } from '../utils/openai.js';
-import { clearMemory, saveToMemory } from '../utils/memoryCache.js';
-import { getIntroPrompt } from '../utils/promptTemplates.js';
+import { getOutroPromptFull } from '../utils/promptTemplates.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, date, episode, reset } = req.body;
-
-    if (!sessionId || !date || !episode) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    if (reset && reset === 'Y') {
-      await clearMemory(sessionId);
-    }
-
-    // Get base intro prompt
-    const basePrompt = getIntroPrompt(date, episode);
-    const fullPrompt = `${basePrompt}\n\nGenerate the full SSML-formatted intro as per requirements, do not repeat this prompt text.`;
+    const prompt = await getOutroPromptFull();
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
       temperature: 0.75,
-      messages: [{ role: 'user', content: fullPrompt }]
+      messages: [{ role: 'user', content: prompt }]
     });
 
-    const introText = completion.choices?.[0]?.message?.content?.trim();
-    if (!introText) {
-      return res.status(500).json({ error: 'Intro generation failed' });
-    }
+    // Get raw content and remove excessive newlines
+    const rawOutro = completion.choices[0].message.content.trim();
+    const finalOutro = rawOutro.replace(/\n+/g, ' ');
 
-    // Save to persistent disk (matching outro.js approach)
+    // Save to disk
     const storageDir = path.resolve('/mnt/data', sessionId);
     fs.mkdirSync(storageDir, { recursive: true });
-    const introPath = path.join(storageDir, 'intro.txt');
-    fs.writeFileSync(introPath, introText, 'utf-8');
-
-    // Store in memory
-    await saveToMemory(sessionId, { intro: introText });
+    const outroPath = path.join(storageDir, 'outro.txt');
+    fs.writeFileSync(outroPath, finalOutro);
 
     res.json({
       sessionId,
-      introPath,
-      intro: introText
+      outroPath
     });
+
   } catch (err) {
-    console.error('Intro error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Outro generation failed:', err);
+    res.status(500).json({ error: 'Failed to generate outro' });
   }
 });
 
