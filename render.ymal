@@ -1,17 +1,16 @@
 services:
-  # This should match the name of your "Static Site" or "Web Service" on Render.
-  - type: static_site # Or web, if you have a Node server
-    name: my-weather-app # <-- IMPORTANT: Change this to your service name on Render
-    env: node # Specify the environment for serverless functions
-    buildFilter:
-      paths:
-      - src/**
-      - api/**
-      - package.json
-    routes:
-      - type: rewrite
-        source: /api/:path*
-        destination: /api/:path
-      - type: rewrite
-        source: /*
-        destination: /index.html
+  - type: web
+    name: podcast-script-api
+    env: node
+    plan: free
+    autoDeploy: true
+    buildCommand: "npm ci"
+    startCommand: "node index.js"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      # Add OPENAI_API_KEY in the Render dashboard
