@@ -1,51 +1,37 @@
 // routes/main.js
+
+// Use named imports instead of default
+import { getMainPrompt, getIntroPrompt, getOutroPromptFull } from '../utils/promptTemplates.js';
 import express from 'express';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
-import OpenAI from 'openai';
-import getMainPrompt from '../utils/promptTemplates.js';
 
 const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Persistent storage directory (Render keeps /opt/render/project/data between deploys)
-const storageDir = '/opt/render/project/data';
-
-router.post('/', async (req, res) => {
+// Example route to generate main podcast script
+router.post('/generate', async (req, res) => {
   try {
-    const { title, url } = req.body;
+    const { articleTextArray, weatherSummary, turingQuote } = req.body;
 
-    // Create main prompt
-    const promptText = getMainPrompt({ title, url });
+    // Generate prompts
+    const introPrompt = getIntroPrompt({ weatherSummary, turingQuote });
+    const mainPrompt = getMainPrompt(articleTextArray);
+    const outroPrompt = await getOutroPromptFull();
 
-    // Get AI result
-    const aiResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: promptText }],
-      temperature: 0.7
-    });
+    // Save results to persistent storage (disk)
+    const outputDir = path.resolve('./podcastOutputs');
+    await fs.mkdir(outputDir, { recursive: true });
 
-    const aiResult = aiResponse.choices[0].message.content.trim();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const outputFile = path.join(outputDir, `podcast_${timestamp}.txt`);
 
-    // Ensure storage folder exists
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
+    const fullContent = `${introPrompt}\n\n${mainPrompt}\n\n${outroPrompt}`;
+    await fs.writeFile(outputFile, fullContent, 'utf8');
 
-    // Save just the result to a text file
-    const filePath = path.join(storageDir, `result_${Date.now()}.txt`);
-    fs.writeFileSync(filePath, aiResult, 'utf-8');
-
-    // Respond to client
-    res.json({
-      message: 'Result saved',
-      savedTo: filePath,
-      result: aiResult
-    });
-
-  } catch (error) {
-    console.error('Error running main prompt:', error);
-    res.status(500).json({ error: 'Failed to run main prompt' });
+    res.json({ success: true, file: outputFile, content: fullContent });
+  } catch (err) {
+    console.error('Error generating podcast:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
