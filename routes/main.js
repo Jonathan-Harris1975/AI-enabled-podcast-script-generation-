@@ -24,18 +24,24 @@ router.post('/', async (req, res) => {
     const outputDir = path.resolve('/opt/render/project/src/raw-text/raw-text', sessionId);
     fs.mkdirSync(outputDir, { recursive: true });
 
+    // Determine starting chunk number (auto-increment if folder exists)
+    const existingFiles = fs.readdirSync(outputDir)
+      .filter(f => f.startsWith('chunk-') && f.endsWith('.txt'));
+    let chunkNumber = existingFiles.length + 1;
+
     const filePaths = [];
 
     // Save each article as a separate chunk
-    for (let i = 0; i < feedItems.length; i++) {
-      const item = feedItems[i];
+    for (const item of feedItems) {
       const mainPrompt = getMainPrompt([`${item.title}\n${item.summary}`]);
 
-      const fileName = `chunk-${i + 1}.txt`;
+      const fileName = `chunk-${chunkNumber}.txt`;
       const filePath = path.join(outputDir, fileName);
 
       fs.writeFileSync(filePath, mainPrompt, 'utf8');
       filePaths.push(filePath);
+
+      chunkNumber++;
     }
 
     res.json({
