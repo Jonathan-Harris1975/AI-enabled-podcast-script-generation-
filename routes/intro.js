@@ -1,10 +1,12 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { openai } from '../utils/openai.js';
 import { clearMemory, saveToMemory } from '../utils/memoryCache.js';
 import { getIntroPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
+const sessionsDir = path.resolve('./sessions');
 
 router.post('/', async (req, res) => {
   try {
@@ -20,8 +22,6 @@ router.post('/', async (req, res) => {
 
     // Get base intro prompt
     const basePrompt = getIntroPrompt(date, episode);
-
-    // Add clear instruction to actually generate content
     const fullPrompt = `${basePrompt}\n\nGenerate the full SSML-formatted intro as per requirements, do not repeat this prompt text.`;
 
     const completion = await openai.chat.completions.create({
@@ -35,12 +35,20 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'Intro generation failed' });
     }
 
-    // Store intro in session memory
+    // Ensure session folder exists
+    const sessionFolder = path.join(sessionsDir, sessionId);
+    fs.mkdirSync(sessionFolder, { recursive: true });
+
+    // Save to disk
+    const introPath = path.join(sessionFolder, 'intro.txt');
+    fs.writeFileSync(introPath, introText, 'utf-8');
+
+    // Store in memory
     await saveToMemory(sessionId, { intro: introText });
 
     res.json({
       sessionId,
-      introPath: `${sessionId}/intro.txt`,
+      introPath,
       intro: introText
     });
   } catch (err) {
