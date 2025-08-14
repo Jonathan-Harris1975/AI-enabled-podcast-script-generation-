@@ -1,45 +1,40 @@
-// routes/intro.js
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { openai } from '../utils/openai.js';
-import { clearMemory } from '../utils/memoryCache.js';
-import { getIntroPrompt } from '../utils/promptTemplates.js';
+import fetch from 'node-fetch';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   try {
-    const { sessionId, date, episode, reset } = req.body;
+    const { sessionId, date } = req.body;
 
-    if (!sessionId || !date || !episode) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!sessionId || !date) {
+      return res.status(400).json({ error: 'Missing sessionId or date' });
     }
 
-    if (reset && reset === 'Y') {
-      await clearMemory(sessionId);
+    // Example weather API call (replace with your real endpoint/key)
+    const weatherApiUrl = `https://api.weatherapi.com/v1/forecast.json?key=YOUR_API_KEY&q=London&dt=${date}`;
+    const weatherResponse = await fetch(weatherApiUrl);
+    const weatherData = await weatherResponse.json();
+
+    // Create intro text based on weather data
+    const introText = `Welcome to our podcast for ${date}. Today’s weather in London: ${weatherData.forecast.forecastday[0].day.condition.text}, ${weatherData.forecast.forecastday[0].day.avgtemp_c}°C.`;
+
+    // Save to persistent disk
+    const sessionDir = path.resolve('/mnt/data', sessionId);
+    if (!fs.existsSync(sessionDir)) {
+      fs.mkdirSync(sessionDir, { recursive: true });
     }
-
-    const prompt = getIntroPrompt(date, episode);
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      temperature: 0.75,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    const intro = completion.choices[0].message.content.trim();
-    const storageDir = path.resolve('/mnt/data', sessionId);
-    fs.mkdirSync(storageDir, { recursive: true });
-    fs.writeFileSync(path.join(storageDir, 'intro.txt'), intro);
+    fs.writeFileSync(path.join(sessionDir, 'intro.txt'), introText, 'utf-8');
 
     res.json({
-      sessionId,
-      introPath: `${storageDir}/intro.txt`
+      status: 'success',
+      file: `/mnt/data/${sessionId}/intro.txt`
     });
-  } catch (err) {
-    console.error('❌ Intro route error:', err);
-    res.status(500).json({ error: 'Intro generation failed' });
+  } catch (error) {
+    console.error('Error generating intro:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 });
 
