@@ -1,31 +1,52 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const keepAlive = require('./utils/keepAlive');
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import pinoHttp from "pino-http";
+import morgan from "morgan";
 
-const introRoute = require('./routes/intro');
-const mainRoute = require('./routes/main');
-const outroRoute = require('./routes/outro');
-const composeRoute = require('./routes/compose');
-const clearSessionRoute = require('./routes/clearSession');
+import { router as apiRouter } from "./routes/index.js";
+import { logger } from "./utils/logger.js";
 
 const app = express();
-app.use(bodyParser.json());
 
-// Routes
-app.use(introRoute);
-app.use(mainRoute);
-app.use(outroRoute);
-app.use(composeRoute);
-app.use(clearSessionRoute);
+// Core middleware
+app.use(helmet());
+app.use(cors({ origin: true, credentials: false }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false }));
 
-// KeepAlive — URL from environment variable
-if (process.env.KEEPALIVE_URL) {
-  keepAlive(process.env.KEEPALIVE_URL, process.env.KEEPALIVE_INTERVAL || 300000);
+// Logs
+app.use(pinoHttp({ logger }));
+if (process.env.NODE_ENV !== "production") {
+  app.use(morgan("dev"));
 }
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Basic rate limiter (per IP)
+const limiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use(limiter);
+
+// Mount API
+app.use("/", apiRouter);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Not Found", path: req.originalUrl });
 });
 
-module.exports = app; // for tests
+// Error handler (last)
+app.use((err, req, res, _next) => {
+  logger.error({ err }, "Unhandled error");
+  const status = err.status || 500;
+  res.status(status).json({
+    error: err.message || "Internal Server Error",
+    code: err.code || "internal_error"
+  });
+});
+
+export default app;
