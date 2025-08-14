@@ -1,6 +1,6 @@
 import express from 'express';
 import { getIntroPrompt } from '../utils/promptTemplates.js';
-import { getTuringQuote } from '../utils/turingQuotes.js'; // Assuming this file exists
+import { getTuringQuote } from '../utils/getTuringQuote.js'; // Assuming this file exists
 import getRealWeatherSummary from '../utils/weather.js'; // <-- IMPORT THE NEW FUNCTION
 
 const router = express.Router();
