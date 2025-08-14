@@ -5,20 +5,43 @@ import path from 'path';
 const router = express.Router();
 
 router.post('/', (req, res) => {
-  const { sessionId } = req.body;
-  if (!sessionId) {
-    return res.status(400).json({ error: 'Missing sessionId' });
-  }
-
-  const sessionPath = path.resolve('/mnt/data', sessionId);
-
-  fs.rm(sessionPath, { recursive: true, force: true }, (err) => {
-    if (err) {
-      console.error('Error clearing session:', err);
-      return res.status(500).json({ error: 'Failed to clear session data' });
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
     }
-    res.status(200).json({ message: 'Session cleared' });
-  });
+
+    const sessionDir = path.resolve('/mnt/data', sessionId);
+
+    // Files to clear
+    const filesToDelete = [
+      'intro.txt',
+      'main.txt',
+      'outro.txt',
+      'final-full-transcript.txt'
+    ];
+
+    let deletedFiles = [];
+    filesToDelete.forEach(file => {
+      const filePath = path.join(sessionDir, file);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          deletedFiles.push(file);
+        } catch (err) {
+          console.error(`Failed to delete ${filePath}:`, err);
+        }
+      }
+    });
+
+    res.json({
+      message: `Cleared session ${sessionId} files from persistent storage`,
+      deleted: deletedFiles
+    });
+  } catch (error) {
+    console.error('Clear session error:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
 });
 
 export default router;
