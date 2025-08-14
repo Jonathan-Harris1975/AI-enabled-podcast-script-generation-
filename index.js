@@ -1,41 +1,65 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
 
-// Routes
-import healthRoute from './routes/health.js';
-import introRoute from './routes/intro.js';
-import mainRoute from './routes/main.js';
-import outroRoute from './routes/outro.js';
-import composeRoute from './routes/compose.js';
-import clearSessionRoute from './routes/clearsession.js';
+const cacheDir = '/mnt/data/session_cache';
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// Ensure the cache directory exists with full permissions
+fs.mkdirSync(cacheDir, { recursive: true, mode: 0o777 });
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
+/**
+ * Simple in-memory cache with optional file storage
+ */
+export default class MemoryCache {
+    constructor() {
+        this.cache = {};
+    }
 
-// Routes
-app.use('/health', healthRoute);
-app.use('/intro', introRoute);
-app.use('/main', mainRoute);
-app.use('/outro', outroRoute);
-app.use('/compose', composeRoute);
-app.use('/clearsession', clearSessionRoute);
+    set(key, value) {
+        this.cache[key] = value;
+        const filePath = path.join(cacheDir, `${key}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
+    }
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
+    get(key) {
+        if (this.cache[key]) {
+            return this.cache[key];
+        }
+        const filePath = path.join(cacheDir, `${key}.json`);
+        if (fs.existsSync(filePath)) {
+            try {
+                const data = fs.readFileSync(filePath, 'utf8');
+                const parsed = JSON.parse(data);
+                this.cache[key] = parsed;
+                return parsed;
+            } catch (err) {
+                console.error(`Failed to read cache file for key: ${key}`, err);
+                return null;
+            }
+        }
+        return null;
+    }
 
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.stack);
-  res.status(500).json({ error: 'Internal server error' });
-});
+    clear(key) {
+        delete this.cache[key];
+        const filePath = path.join(cacheDir, `${key}.json`);
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+            } catch (err) {
+                console.error(`Failed to delete cache file for key: ${key}`, err);
+            }
+        }
+    }
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+    clearAll() {
+        this.cache = {};
+        fs.readdirSync(cacheDir).forEach(file => {
+            const filePath = path.join(cacheDir, file);
+            try {
+                fs.unlinkSync(filePath);
+            } catch (err) {
+                console.error(`Failed to delete cache file: ${filePath}`, err);
+            }
+        });
+    }
+}
