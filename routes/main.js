@@ -1,63 +1,52 @@
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import fetchFeeds from '../utils/fetchFeeds.js';
-import getMainPrompt from '../utils/promptTemplates.js';
-import chunkText from '../utils/chunkText.js';
-import OpenAI from 'openai';
+// utils/promptTemplates.js
+import getSponsor from './getSponsor.js';
+import generateCta from './generateCta.js';
+import { getRandomTone } from './toneSetter.js';
 
-const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const episodeTone = getRandomTone(); // stays fixed for the whole episode
 
-// Directory for persistent storage
-const persistentDir = path.join(process.cwd(), 'sessions');
-if (!fs.existsSync(persistentDir)) {
-  fs.mkdirSync(persistentDir);
+// Helper for subtle variations
+function humanize(text) {
+  const swaps = {
+    "quick": ["quick", "brief", "short"],
+    "recent": ["recent", "lately", "these past days"],
+    "casually": ["casually", "offhandedly", "lightly"],
+    "like it actually means something": [
+      "like it actually means something",
+      "as if it carries real weight",
+      "with just enough gravitas"
+    ],
+    "Keep it smart, dry, and unmistakably London": [
+      "Keep it smart, dry, and unmistakably London",
+      "Smart, dry, and distinctly London — keep it that way",
+      "Stay smart, stay dry, and keep it unmistakably London"
+    ],
+    "Wrap up with": ["Wrap up with", "Finish with", "Close out with"]
+  };
+
+  return text.replace(
+    /\b(?:quick|recent|casually|like it actually means something|Keep it smart, dry, and unmistakably London|Wrap up with)\b/gi,
+    match => {
+      const lower = match.toLowerCase();
+      const options = swaps[match] || swaps[lower];
+      return options ? options[Math.floor(Math.random() * options.length)] : match;
+    }
+  );
 }
 
-router.post('/', async (req, res) => {
-  try {
-    const { feedUrl, sessionId } = req.body;
-    if (!feedUrl || !sessionId) {
-      return res.status(400).json({ error: 'feedUrl and sessionId are required' });
-    }
+export function getMainPrompt({ title, url, weatherSummary, turingQuote }) {
+  const sponsor = getSponsor();
+  const cta = generateCta(sponsor);
 
-    const sessionDir = path.join(persistentDir, sessionId);
-    if (!fs.existsSync(sessionDir)) {
-      fs.mkdirSync(sessionDir, { recursive: true });
-    }
+  return humanize(`You’re the British Gen X host of Turing's Torch: AI Weekly.
+Tone for this episode: ${episodeTone}.
 
-    // Fetch up to 40 feed items with improved date handling
-    const items = await fetchFeeds(feedUrl, { limit: 40 });
+Wrap up with a brief, wry reflection, making sure the podcast name — Turing's Torch: AI Weekly — is clearly mentioned.
+Reference this ebook like it’s one of your own: "${title}" (link: ${url}).
+Keep the tone relaxed, confident, and lightly sarcastic — nothing forced.
+End with this call to action: ${cta}.
+Plain text only — no breaks or formatting.`);
+}
 
-    const savedFiles = [];
-
-    for (const [index, item] of items.entries()) {
-      // Grab content snippet or fallback
-      const articleText = item.contentSnippet || item.content || item.summary || '';
-      const prompt = getMainPrompt(articleText);
-
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const output = completion.choices[0]?.message?.content || '';
-      const chunks = chunkText(output);
-
-      chunks.forEach((chunk, chunkIndex) => {
-        const filename = `main-${index + 1}-${chunkIndex + 1}.txt`;
-        const filePath = path.join(sessionDir, filename);
-        fs.writeFileSync(filePath, chunk);
-        savedFiles.push(filename);
-      });
-    }
-
-    res.json({ files: savedFiles });
-  } catch (error) {
-    console.error('Error generating main scripts:', error);
-    res.status(500).json({ error: 'Failed to generate main scripts' });
-  }
-});
-
-export default router;
+// ✅ Added so `import getMainPrompt from '../utils/promptTemplates.js'` works
+export default getMainPrompt;
