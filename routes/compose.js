@@ -78,10 +78,8 @@ router.post('/', async (req, res) => {
 
     const chunks = splitPlainText(fullTranscript, 4500);
 
-    // Upload transcript to R2 but use custom URL format
     const transcriptKey = `final-text/${sessionId}/final-full-transcript.txt`;
-    await uploadToR2(finalTranscriptPath, transcriptKey);
-    const transcriptUrl = `https://transcripts.jonathan-harris.online/${sessionId}.txt`;
+    const transcriptUrl = await uploadToR2(finalTranscriptPath, transcriptKey);
 
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {

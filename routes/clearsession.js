@@ -1,40 +1,47 @@
-import fs from 'fs/promises';
-import path from 'path';
 import express from 'express';
-import { SESSION_CACHE_PATH } from '../config.js';
+import fs from 'fs';
+import path from 'path';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
-    const { sessionid } = req.body;
-
-    if (!sessionid) {
-        return res.status(400).json({ error: 'sessionid is required' });
+router.post('/', (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
     }
 
-    try {
-        const files = await fs.readdir(SESSION_CACHE_PATH);
+    const sessionDir = path.resolve('/mnt/data', sessionId);
 
-        const matchingFiles = files.filter(file =>
-            file.startsWith(`${sessionid}_intro`) ||
-            file.startsWith(`${sessionid}_main`) ||
-            file.startsWith(`${sessionid}_outro`)
-        );
+    // Files to clear
+    const filesToDelete = [
+      'intro.txt',
+      'main.txt',
+      'outro.txt',
+      'final-full-transcript.txt'
+    ];
 
-        await Promise.all(
-            matchingFiles.map(file =>
-                fs.unlink(path.join(SESSION_CACHE_PATH, file))
-            )
-        );
+    let deletedFiles = [];
+    filesToDelete.forEach(file => {
+      const filePath = path.join(sessionDir, file);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          deletedFiles.push(file);
+        } catch (err) {
+          console.error(`Failed to delete ${filePath}:`, err);
+        }
+      }
+    });
 
-        res.json({
-            status: 'session cleared',
-            deleted: matchingFiles
-        });
-    } catch (err) {
-        console.error(`Error clearing session ${sessionid}:`, err);
-        res.status(500).json({ error: 'Failed to clear session' });
-    }
+    res.json({
+      message: `Cleared session ${sessionId} files from persistent storage`,
+      deleted: deletedFiles
+    });
+  } catch (error) {
+    console.error('Clear session error:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
 });
 
 export default router;
