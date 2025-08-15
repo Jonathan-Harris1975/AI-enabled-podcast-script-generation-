@@ -20,23 +20,39 @@ router.post('/', async (req, res) => {
     // Build paths
     const sessionPath = path.join(DATA_DIR, sessionId);
     const introPath = path.join(sessionPath, 'intro.txt');
-    const mainPath = path.join(sessionPath, 'main.txt');
     const outroPath = path.join(sessionPath, 'outro.txt');
+
+    // Find main chunk files (main.txt OR chunk-*.txt)
+    const filesInDir = fs.existsSync(sessionPath) ? fs.readdirSync(sessionPath) : [];
+    const mainChunkFiles = filesInDir
+      .filter(f => /^chunk-\d+\.txt$/.test(f))
+      .sort((a, b) => {
+        // Ensure ordered combining
+        const aNum = parseInt(a.match(/^chunk-(\d+)\.txt$/)[1], 10);
+        const bNum = parseInt(b.match(/^chunk-(\d+)\.txt$/)[1], 10);
+        return aNum - bNum;
+      })
+      .map(f => path.join(sessionPath, f));
+    // If main.txt exists, add it last (after chunks)
+    const mainPath = path.join(sessionPath, 'main.txt');
+    const mainFiles = mainChunkFiles.length > 0
+      ? mainChunkFiles.concat(fs.existsSync(mainPath) ? [mainPath] : [])
+      : (fs.existsSync(mainPath) ? [mainPath] : []);
 
     // Debug: Print built paths
     console.log('--- [DEBUG] Checking file paths:');
     console.log('Intro:', introPath);
-    console.log('Main:', mainPath);
+    console.log('Main files:', mainFiles);
     console.log('Outro:', outroPath);
 
     // Check file existence
     const introExists = fs.existsSync(introPath);
-    const mainExists = fs.existsSync(mainPath);
+    const mainExists = mainFiles.length > 0 && mainFiles.every(f => fs.existsSync(f));
     const outroExists = fs.existsSync(outroPath);
 
     console.log('--- [DEBUG] File existence:');
     console.log('Intro exists:', introExists);
-    console.log('Main exists:', mainExists);
+    console.log('Main exists:', mainExists, '| Files found:', mainFiles.length);
     console.log('Outro exists:', outroExists);
 
     if (!introExists || !mainExists || !outroExists) {
@@ -46,21 +62,23 @@ router.post('/', async (req, res) => {
           introExists,
           mainExists,
           outroExists,
-          sessionPath
+          sessionPath,
+          mainFiles
         }
       });
     }
 
-    // Read contents
-    const introText = fs.readFileSync(introPath, 'utf-8');
-    const mainText = fs.readFileSync(mainPath, 'utf-8');
-    const outroText = fs.readFileSync(outroPath, 'utf-8');
+    // Read and concatenate all main files in order
+    const mainText = mainFiles
+      .map(file => fs.readFileSync(file, 'utf-8').trim())
+      .filter(Boolean)
+      .join('\n\n');
 
     // Debug: Print file contents (trimmed for safety)
     console.log('--- [DEBUG] File contents (first 200 chars):');
-    console.log('Intro:', introText.slice(0, 200));
+    console.log('Intro:', fs.readFileSync(introPath, 'utf-8').slice(0, 200));
     console.log('Main:', mainText.slice(0, 200));
-    console.log('Outro:', outroText.slice(0, 200));
+    console.log('Outro:', fs.readFileSync(outroPath, 'utf-8').slice(0, 200));
 
     // Check for empty main
     if (!mainText.trim()) {
@@ -77,7 +95,7 @@ router.post('/', async (req, res) => {
       sessionPath,
       files: {
         introPath,
-        mainPath,
+        mainFiles,
         outroPath
       },
       exists: {
@@ -86,9 +104,9 @@ router.post('/', async (req, res) => {
         outroExists
       },
       contents: {
-        intro: introText,
+        intro: fs.readFileSync(introPath, 'utf-8'),
         main: mainText,
-        outro: outroText
+        outro: fs.readFileSync(outroPath, 'utf-8')
       }
     });
   } catch (err) {
