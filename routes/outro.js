@@ -23,7 +23,11 @@ router.post('/', async (req, res) => {
     });
 
     let rawOutro = completion.choices[0].message.content.trim();
+
+    // Keep editAndFormat? Yes, it helps clean and polish the AI text (fixes spacing, removes unwanted chars).
     const formattedOutro = await editAndFormat(rawOutro);
+
+    // Remove line breaks (flatten to single paragraph)
     const finalOutro = formattedOutro.replace(/\n+/g, ' ');
 
     const storageDir = path.resolve('/mnt/data', sessionId);

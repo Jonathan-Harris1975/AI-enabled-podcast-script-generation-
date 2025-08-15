@@ -27,11 +27,13 @@ router.post('/', async (req, res) => {
       messages: [{ role: 'user', content: inputPrompt }]
     });
 
+    // Split on paragraphs or double newlines, trim each chunk
     let chunks = completion.choices[0].message.content
       .split(/\n\n+/)
       .filter(Boolean)
       .map(chunk => chunk.trim());
 
+    // No length filtering here — just save all chunks
     if (chunks.length === 0) {
       throw new Error('No chunks returned from the AI response.');
     }
