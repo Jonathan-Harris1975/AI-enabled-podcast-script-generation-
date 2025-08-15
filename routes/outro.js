@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { openai } from '../utils/openai.js';
+import editAndFormat from '../utils/editAndFormat.js';
 import { getOutroPromptFull } from '../utils/promptTemplates.js';
 
 const router = express.Router();
@@ -21,21 +22,18 @@ router.post('/', async (req, res) => {
       messages: [{ role: 'user', content: prompt }]
     });
 
-    // Get raw content and remove excessive newlines
-    const rawOutro = completion.choices[0].message.content.trim();
-    const finalOutro = rawOutro.replace(/\n+/g, ' ');
+    let rawOutro = completion.choices[0].message.content.trim();
+    const formattedOutro = await editAndFormat(rawOutro);
+    const finalOutro = formattedOutro.replace(/\n+/g, ' ');
 
-    // Save to disk
     const storageDir = path.resolve('/mnt/data', sessionId);
     fs.mkdirSync(storageDir, { recursive: true });
-    const outroPath = path.join(storageDir, 'outro.txt');
-    fs.writeFileSync(outroPath, finalOutro);
+    fs.writeFileSync(path.join(storageDir, 'outro.txt'), finalOutro);
 
     res.json({
       sessionId,
-      outroPath
+      outroPath: `${storageDir}/outro.txt`
     });
-
   } catch (err) {
     console.error('❌ Outro generation failed:', err);
     res.status(500).json({ error: 'Failed to generate outro' });

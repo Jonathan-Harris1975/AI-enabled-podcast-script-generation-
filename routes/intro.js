@@ -1,12 +1,12 @@
+// routes/intro.js
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { openai } from '../utils/openai.js';
-import { clearMemory, saveToMemory } from '../utils/memoryCache.js';
+import { clearMemory } from '../utils/memoryCache.js';
 import { getIntroPrompt } from '../utils/promptTemplates.js';
 
 const router = express.Router();
-const sessionsDir = path.resolve('./sessions');
 
 router.post('/', async (req, res) => {
   try {
@@ -20,40 +20,26 @@ router.post('/', async (req, res) => {
       await clearMemory(sessionId);
     }
 
-    // Get base intro prompt
-    const basePrompt = getIntroPrompt(date, episode);
-    const fullPrompt = `${basePrompt}\n\nGenerate the full SSML-formatted intro as per requirements, do not repeat this prompt text.`;
+    const prompt = getIntroPrompt(date, episode);
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
       temperature: 0.75,
-      messages: [{ role: 'user', content: fullPrompt }]
+      messages: [{ role: 'user', content: prompt }]
     });
 
-    const introText = completion.choices?.[0]?.message?.content?.trim();
-    if (!introText) {
-      return res.status(500).json({ error: 'Intro generation failed' });
-    }
-
-    // Ensure session folder exists
-    const sessionFolder = path.join(sessionsDir, sessionId);
-    fs.mkdirSync(sessionFolder, { recursive: true });
-
-    // Save to disk
-    const introPath = path.join(sessionFolder, 'intro.txt');
-    fs.writeFileSync(introPath, introText, 'utf-8');
-
-    // Store in memory
-    await saveToMemory(sessionId, { intro: introText });
+    const intro = completion.choices[0].message.content.trim();
+    const storageDir = path.resolve('/mnt/data', sessionId);
+    fs.mkdirSync(storageDir, { recursive: true });
+    fs.writeFileSync(path.join(storageDir, 'intro.txt'), intro);
 
     res.json({
       sessionId,
-      introPath,
-      intro: introText
+      introPath: `${storageDir}/intro.txt`
     });
   } catch (err) {
-    console.error('Intro error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Intro route error:', err);
+    res.status(500).json({ error: 'Intro generation failed' });
   }
 });
 
