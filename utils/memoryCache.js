@@ -1,56 +1,50 @@
-import fs from 'fs/promises';
+import fs from 'fs';
 import path from 'path';
-import { SESSION_CACHE_PATH } from '../config.js';
 
-export default class MemoryCache {
-    constructor() {
-        this.cache = {};
-    }
+const BASE_DIR = '/mnt/data/session_cache';
 
-    async set(key, value) {
-        this.cache[key] = value;
-        const filePath = path.join(SESSION_CACHE_PATH, `${key}.json`);
-        try {
-            await fs.writeFile(filePath, JSON.stringify(value, null, 2), 'utf8');
-        } catch (err) {
-            console.error(`Failed to write cache file for key: ${key}`, err);
-        }
-    }
+function getSessionFilePath(sessionId) {
+  return path.join(BASE_DIR, `${sessionId}.json`);
+}
 
-    async get(key) {
-        if (this.cache[key]) {
-            return this.cache[key];
-        }
-        const filePath = path.join(SESSION_CACHE_PATH, `${key}.json`);
-        try {
-            const data = await fs.readFile(filePath, 'utf8');
-            const parsed = JSON.parse(data);
-            this.cache[key] = parsed;
-            return parsed;
-        } catch {
-            return null;
-        }
-    }
+// Ensure the base directory exists
+if (!fs.existsSync(BASE_DIR)) {
+  fs.mkdirSync(BASE_DIR, { recursive: true });
+}
 
-    async clear(key) {
-        delete this.cache[key];
-        const filePath = path.join(SESSION_CACHE_PATH, `${key}.json`);
-        try {
-            await fs.unlink(filePath);
-        } catch {
-            // ignore if doesn't exist
-        }
-    }
+export function saveToMemory(sessionId, key, value) {
+  const filePath = getSessionFilePath(sessionId);
+  let sessionData = {};
 
-    async clearAll() {
-        this.cache = {};
-        try {
-            const files = await fs.readdir(SESSION_CACHE_PATH);
-            for (const file of files) {
-                await fs.unlink(path.join(SESSION_CACHE_PATH, file));
-            }
-        } catch (err) {
-            console.error('Failed to clear all cache files:', err);
-        }
+  if (fs.existsSync(filePath)) {
+    try {
+      sessionData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch {
+      // Corrupted file or parse failure, start fresh
+      sessionData = {};
     }
+  }
+
+  sessionData[key] = value;
+
+  fs.writeFileSync(filePath, JSON.stringify(sessionData, null, 2));
+}
+
+export function getFromMemory(sessionId, key) {
+  const filePath = getSessionFilePath(sessionId);
+  if (!fs.existsSync(filePath)) return undefined;
+
+  try {
+    const sessionData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return sessionData[key];
+  } catch {
+    return undefined;
+  }
+}
+
+export function clearMemory(sessionId) {
+  const filePath = getSessionFilePath(sessionId);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
 }
