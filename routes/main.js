@@ -1,43 +1,66 @@
-import { Router } from "express";
-import { MainSchema } from "../utils/schemas.js";
-import { fetchRssItems } from "../utils/rss.js";
-import { setSessionPart } from "../utils/cache.js";
-import { generateText } from "../utils/ai.js";
-import { config } from "../config.js";
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { openai } from '../utils/openai.js';
+import fetchFeeds from '../utils/fetchFeeds.js';
+import { getMainPrompt } from '../utils/promptTemplates.js';
 
-const router = Router();
+const router = express.Router();
 
-router.post("/", async (req, res, next) => {
+router.post('/', async (req, res) => {
   try {
-    const { sessionId, rssUrl, maxItems = 3, prompt } = MainSchema.parse(
-      req.body
-    );
-    const url = rssUrl || config.defaultRssUrl;
+    const { feedUrl, sessionId } = req.body;
 
-    const { title, items } = await fetchRssItems(url, maxItems);
+    if (!feedUrl) return res.status(400).json({ error: 'Missing feedUrl' });
+    if (!sessionId) return res.status(400).json({ error: 'Missing sessionId' });
 
-    const system =
-      "You turn tech headlines into one-liner, witty summaries. Keep each item crisp, 1-2 sentences, with a light comedic touch but no sarcasm that distorts facts.";
-    const newsText =
-      items
-        .map(
-          (i, idx) =>
-            `#${idx + 1} ${i.title}\nLink: ${i.link}\nDate: ${i.isoDate}\nSnippet: ${i.contentSnippet || i.content || ""}`
-        )
-        .join("\n\n") || "No items found.";
+    // Fetch RSS items
+    const feedItems = await fetchFeeds(feedUrl);
+    if (!feedItems.length) {
+      return res.status(400).json({ error: 'No feed items found in the last 7 days' });
+    }
 
-    const userPrompt = `Source Feed: ${title || "Unknown"}\n\nSummarize the ${items.length} items as a list of punchy bullets suitable for reading aloud on a podcast.\n${prompt ? `\nTone/style guidance: ${prompt}\n` : ""}\nItems:\n${newsText}`;
+    // Create session directory in persistent storage
+    const storageDir = path.resolve('/mnt/data', sessionId);
+    fs.mkdirSync(storageDir, { recursive: true });
 
-    const resultBlob = await generateText({ system, prompt: userPrompt });
-    const result = resultBlob
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // Determine starting chunk number
+    const existingFiles = fs.readdirSync(storageDir)
+      .filter(f => f.startsWith('chunk-') && f.endsWith('.txt'));
+    let chunkNumber = existingFiles.length + 1;
 
-    setSessionPart(sessionId, "main", result, config.sessionTtlSeconds);
-    res.json({ sessionId, result });
+    const filePaths = [];
+
+    // Process each feed item
+    for (const item of feedItems) {
+      const mainPrompt = getMainPrompt([`${item.title}\n${item.summary}`]);
+
+      // Get completion from OpenAI
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4',
+        temperature: 0.75,
+        messages: [{ role: 'user', content: mainPrompt }]
+      });
+
+      const content = completion.choices[0].message.content.trim();
+
+      // Save the completion result (not just the prompt)
+      const fileName = `chunk-${chunkNumber}.txt`;
+      const filePath = path.join(storageDir, fileName);
+      fs.writeFileSync(filePath, content, 'utf8');
+      filePaths.push(filePath);
+
+      chunkNumber++;
+    }
+
+    res.json({
+      sessionId,
+      files: filePaths
+    });
+
   } catch (err) {
-    next(err);
+    console.error('❌ Main prompt generation failed:', err);
+    res.status(500).json({ error: 'Failed to generate main prompts' });
   }
 });
 

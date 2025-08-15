@@ -1,54 +1,29 @@
-import { Router } from "express";
-import { IntroSchema } from "../utils/schemas.js";
-import { setSessionPart } from "../utils/cache.js";
-import { generateText } from "../utils/ai.js";
-import { config } from "../config.js";
+import fs from 'fs/promises';
+import express from 'express';
+import path from 'path';
+import { SESSION_CACHE_PATH } from '../config.js';
 
-const router = Router();
+const router = express.Router();
 
-// Optional Alan Turing quote pool
-const TURING_QUOTES = [
-  "We can only see a short distance ahead, but we can see plenty there that needs to be done.",
-  "Those who can imagine anything, can create the impossible.",
-  "A computer would deserve to be called intelligent if it could deceive a human into believing that it was human."
-];
+router.post('/', async (req, res) => {
+    const { sessionid, date } = req.body;
 
-// Simple (mock) UK weather blurb by date to show the hook without external API
-function weatherLine(dateStr) {
-  if (!dateStr) return "";
-  // lightweight deterministic “weather” line (no network dep)
-  const day = new Date(dateStr + "T00:00:00Z").getUTCDate();
-  const moods = [
-    "sunny spells",
-    "light showers",
-    "overcast skies",
-    "breezy conditions",
-    "warm and bright",
-    "cool with scattered clouds"
-  ];
-  return `In the UK today (${dateStr}), expect ${moods[day % moods.length]}.`;
-}
+    if (!sessionid || !date) {
+        return res.status(400).json({ error: 'sessionid and date are required' });
+    }
 
-router.post("/", async (req, res, next) => {
-  try {
-    const { sessionId, date, prompt } = IntroSchema.parse(req.body);
-
-    const system =
-      "You craft short, witty podcast intros. Tone defaults to friendly, crisp and smart.";
-    const turing = TURING_QUOTES[(Math.abs(sessionId.length) + (date ? date.length : 0)) % TURING_QUOTES.length];
-    const weather = weatherLine(date);
-    const base = `Write a podcast intro that welcomes listeners, tees up an AI/tech news segment, and sets an upbeat tone in 3-5 sentences.${weather ? ` Include this weather line verbatim: "${weather}"` : ""} Also weave in this Alan Turing quote if it fits naturally: "${turing}"`;
-
-    const content = await generateText({
-      system,
-      prompt: prompt ? `${base}\n\nExtra guidance: ${prompt}` : base
-    });
-
-    setSessionPart(sessionId, "intro", content, config.sessionTtlSeconds);
-    res.json({ sessionId, content });
-  } catch (err) {
-    next(err);
-  }
+    const filePath = path.join(SESSION_CACHE_PATH, `${sessionid}_intro.json`);
+    try {
+        const content = {
+            date,
+            generated: new Date().toISOString()
+        };
+        await fs.writeFile(filePath, JSON.stringify(content, null, 2), 'utf8');
+        res.json({ status: 'intro saved', path: filePath });
+    } catch (err) {
+        console.error('Error saving intro data:', err);
+        res.status(500).json({ error: 'Failed to save intro' });
+    }
 });
 
 export default router;
