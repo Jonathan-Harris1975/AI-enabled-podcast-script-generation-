@@ -118,7 +118,7 @@ router.post('/', async (req, res) => {
     const chunks = splitPlainText(fullTranscript, 4500);
 
     // Upload transcript to R2 but use custom URL format
-    const transcriptKey = `final-text/${sessionId}/final-full-transcript.txt`;
+    const transcriptKey = `${sessionId}.txt`;
     await uploadToR2(finalTranscriptPath, transcriptKey);
     const transcriptUrl = `https://transcripts.jonathan-harris.online/${sessionId}.txt`;
 
@@ -128,7 +128,7 @@ router.post('/', async (req, res) => {
       const tempFilePath = path.join(os.tmpdir(), `upload-chunk-${sessionId}-${i + 1}.txt`);
       fs.writeFileSync(tempFilePath, chunk, 'utf-8');
 
-      const key = `raw-text/${sessionId}/chunk-${i + 1}.txt`;
+      const key = `${sessionId}/chunk-${i + 1}.txt`;
       const url = await uploadChunksToR2(tempFilePath, key);
 
       fs.unlinkSync(tempFilePath);
