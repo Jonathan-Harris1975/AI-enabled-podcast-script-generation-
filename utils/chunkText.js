@@ -1,4 +1,4 @@
-export default function chunkText(text, maxLength = 4500) {
+export default function chunkText(text, maxLength = 3500) {
   const chunks = [];
   let currentChunk = '';
 
