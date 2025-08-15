@@ -1,31 +1,29 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const keepAlive = require('./utils/keepAlive');
-
-const introRoute = require('./routes/intro');
-const mainRoute = require('./routes/main');
-const outroRoute = require('./routes/outro');
-const composeRoute = require('./routes/compose');
-const clearSessionRoute = require('./routes/clearSession');
+import express from 'express';
+import composeRouter from './routes/compose.js'; // Adjust if your path is different
 
 const app = express();
-app.use(bodyParser.json());
-
-// Routes
-app.use(introRoute);
-app.use(mainRoute);
-app.use(outroRoute);
-app.use(composeRoute);
-app.use(clearSessionRoute);
-
-// KeepAlive — URL from environment variable
-if (process.env.KEEPALIVE_URL) {
-  keepAlive(process.env.KEEPALIVE_URL, process.env.KEEPALIVE_INTERVAL || 300000);
-}
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+
+// 1. Body parser middleware for JSON (MUST be before routes)
+app.use(express.json());
+
+// Optional: Log incoming requests for debugging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} Body:`, req.body);
+  next();
 });
 
-module.exports = app; // for tests
+// 2. Register the /compose router
+app.use('/compose', composeRouter);
+
+// 3. Health check endpoint
+app.get('/', (req, res) => {
+  res.send('Podcast Script Generation API running!');
+});
+
+// 4. Listen for connections
+app.listen(PORT, () => {
+  console.log(`Server started on port ${PORT}`);
+});
+
+export default app;
