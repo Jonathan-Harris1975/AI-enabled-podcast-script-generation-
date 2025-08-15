@@ -27,6 +27,23 @@ async function askOpenAI(prompt) {
   return response.choices[0].message.content;
 }
 
+// Episode counter file
+const EPISODE_FILE = path.resolve('/mnt/data', 'episodes.json');
+
+function getNextEpisodeNumber() {
+  let episodes = { lastEpisode: 0 };
+  if (fs.existsSync(EPISODE_FILE)) {
+    try {
+      episodes = JSON.parse(fs.readFileSync(EPISODE_FILE, 'utf-8'));
+    } catch {
+      episodes = { lastEpisode: 0 };
+    }
+  }
+  episodes.lastEpisode += 1;
+  fs.writeFileSync(EPISODE_FILE, JSON.stringify(episodes), 'utf-8');
+  return String(episodes.lastEpisode).padStart(2, '0');
+}
+
 const router = express.Router();
 
 router.post('/', async (req, res) => {
@@ -38,7 +55,6 @@ router.post('/', async (req, res) => {
 
     const storageDir = path.resolve('/mnt/data', sessionId);
 
-    // Read previously created intro, main, outro texts
     const introPath = path.join(storageDir, 'intro.txt');
     const mainPath = path.join(storageDir, 'main.txt');
     const outroPath = path.join(storageDir, 'outro.txt');
@@ -51,26 +67,22 @@ router.post('/', async (req, res) => {
     let mainText = fs.readFileSync(mainPath, 'utf-8').trim();
     const outroText = fs.readFileSync(outroPath, 'utf-8').trim();
 
-    // Edit & format main text only
     mainText = await editAndFormat(mainText);
     if (!mainText || !mainText.trim()) {
       return res.status(400).json({ error: 'Main script is empty after formatting' });
     }
 
-    // Combine all into final transcript
     const fullTranscript = [introText, mainText, outroText].join('\n\n');
-
     const finalTranscriptPath = path.join(storageDir, 'final-full-transcript.txt');
     fs.writeFileSync(finalTranscriptPath, fullTranscript, 'utf-8');
 
-    // Split transcript into chunks of max 4500 characters
     const chunks = splitPlainText(fullTranscript, 4500);
 
-    // Upload full transcript
+    // Upload transcript to R2 but use custom URL format
     const transcriptKey = `final-text/${sessionId}/final-full-transcript.txt`;
-    const transcriptUrl = await uploadToR2(finalTranscriptPath, transcriptKey);
+    await uploadToR2(finalTranscriptPath, transcriptKey);
+    const transcriptUrl = `https://transcripts.jonathan-harris.online/${sessionId}.txt`;
 
-    // Upload chunks
     const chunkUrls = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -84,7 +96,6 @@ router.post('/', async (req, res) => {
       chunkUrls.push(url);
     }
 
-    // Generate title and description from full transcript
     const titleDescPrompt = getTitleDescriptionPrompt(fullTranscript);
     const titleDescResponse = await askOpenAI(titleDescPrompt);
     let title, description;
@@ -97,20 +108,22 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'AI generated title or description missing' });
     }
 
-    // Generate SEO keywords
+    // Add episode number
+    const episodeNumber = getNextEpisodeNumber();
+    title = `Episode ${episodeNumber} - ${title}`;
+
     const seoPrompt = getSEOKeywordsPrompt(description);
     const seoKeywordsRaw = await askOpenAI(seoPrompt);
     const seoKeywords = seoKeywordsRaw.trim();
 
-    // Generate artwork prompt
     const artworkPrompt = getArtworkPrompt(description);
     const artworkDescription = (await askOpenAI(artworkPrompt)).trim();
 
-    // Pick a random tone for fun
     const tone = getRandomTone();
 
     res.json({
       sessionId,
+      episodeNumber,
       transcriptUrl,
       chunkUrls,
       chunks,
