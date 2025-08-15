@@ -1,9 +1,24 @@
-import pino from "pino";
+// utils/logger.js
+import winston from 'winston';
+import { format } from 'logform';
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL || "info",
-  transport:
-    process.env.NODE_ENV !== "production"
-      ? { target: "pino-pretty", options: { colorize: true } }
-      : undefined
+const { createLogger, transports } = winston;
+const { combine, timestamp, printf, colorize } = format;
+
+const logFormat = printf(({ level, message, timestamp }) => {
+  return `${timestamp} [${level}]: ${message}`;
 });
+
+const logger = createLogger({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: combine(
+    colorize(),
+    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    logFormat
+  ),
+  transports: [new transports.Console()]
+});
+
+export function getLogger(moduleName) {
+  return logger.child({ module: moduleName });
+}
