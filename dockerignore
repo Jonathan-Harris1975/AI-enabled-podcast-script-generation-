@@ -1,6 +1,5 @@
 node_modules
+npm-debug.log
 .git
-.gitignore
-npm-debug.log*
-coverage
-Dockerfile
+.gitlab-ci.yml
+tests

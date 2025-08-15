@@ -1,6 +1,18 @@
-node_modules
+# Node
+node_modules/
+npm-debug.log
+
+# Env
 .env
-npm-debug.log*
+
+# Generated output
+storage/
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# OS-specific
 .DS_Store
-coverage
-dist
+Thumbs.db

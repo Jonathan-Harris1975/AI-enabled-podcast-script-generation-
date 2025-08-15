@@ -1,27 +1,35 @@
-import dotenv from "dotenv";
-dotenv.config();
+import express from 'express';
+import { PORT, SESSION_CACHE_PATH } from './config.js';
+import fs from 'fs';
+import MemoryCache from './utils/memoryCache.js';
 
-import app from "./app.js";
-import { logger } from "./utils/logger.js";
+const app = express();
 
-const PORT = Number(process.env.PORT || 3000);
+// Ensure cache dir exists
+fs.mkdirSync(SESSION_CACHE_PATH, { recursive: true, mode: 0o777 });
+console.log(`✅ session_cache directory ready at ${SESSION_CACHE_PATH}`);
 
-const server = app.listen(PORT, () => {
-  logger.info({ port: PORT }, `API listening on port ${PORT}`);
+app.use(express.json());
+
+// Example health check
+app.get('/', (req, res) => {
+    res.send('Podcast Script Generation Service is running.');
 });
 
-// Graceful shutdown
-const shutdown = (signal) => {
-  logger.warn({ signal }, "Shutting down…");
-  server.close(() => {
-    logger.info("HTTP server closed");
-    process.exit(0);
-  });
-  setTimeout(() => {
-    logger.error("Forced shutdown");
-    process.exit(1);
-  }, 10_000).unref();
-};
+// Example cache endpoints
+const cache = new MemoryCache();
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+app.post('/cache', async (req, res) => {
+    const { key, value } = req.body;
+    await cache.set(key, value);
+    res.json({ status: 'ok' });
+});
+
+app.get('/cache/:key', async (req, res) => {
+    const value = await cache.get(req.params.key);
+    res.json({ value });
+});
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});

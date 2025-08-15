@@ -1,10 +1,16 @@
-export const config = {
-  env: process.env.NODE_ENV || "development",
-  port: Number(process.env.PORT || 3000),
-  openaiApiKey: process.env.OPENAI_API_KEY || "",
-  openaiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
-  mockAi: String(process.env.MOCK_AI || "false").toLowerCase() === "true",
-  defaultRssUrl:
-    process.env.DEFAULT_RSS_URL || "https://venturebeat.com/feed/",
-  sessionTtlSeconds: Number(process.env.SESSION_TTL_SECONDS || 3600)
-};
+import fs from 'fs';
+
+const DEFAULT_CACHE_PATH = '/mnt/data/session_cache';
+let CACHE_PATH = DEFAULT_CACHE_PATH;
+
+// Check if /mnt/data is writable, else fallback to /tmp
+try {
+    fs.mkdirSync(DEFAULT_CACHE_PATH, { recursive: true, mode: 0o777 });
+} catch (err) {
+    console.warn('⚠️ /mnt/data not writable, falling back to /tmp/session_cache');
+    CACHE_PATH = '/tmp/session_cache';
+    fs.mkdirSync(CACHE_PATH, { recursive: true, mode: 0o777 });
+}
+
+export const PORT = process.env.PORT || 3000;
+export const SESSION_CACHE_PATH = CACHE_PATH;
