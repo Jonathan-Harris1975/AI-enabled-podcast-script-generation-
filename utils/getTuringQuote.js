@@ -1,9 +1,9 @@
-import fs from 'fs';
-import path from 'path';
+const fs = require('fs');
+const path = require('path');
 
 let quotesCache = null;
 
-export default function getTuringQuote() {
+function getTuringQuote() {
   if (!quotesCache) {
     const quotesPath = path.resolve('utils', 'quotes.txt');
     const raw = fs.readFileSync(quotesPath, 'utf-8');
@@ -16,3 +16,5 @@ export default function getTuringQuote() {
   const i = Math.floor(Math.random() * quotesCache.length);
   return quotesCache[i];
 }
+
+module.exports = getTuringQuote;
