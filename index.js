@@ -1,35 +1,41 @@
 import express from 'express';
-import { PORT, SESSION_CACHE_PATH } from './config.js';
-import fs from 'fs';
-import MemoryCache from './utils/memoryCache.js';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+
+// Routes
+import healthRoute from './routes/health.js';
+import introRoute from './routes/intro.js';
+import mainRoute from './routes/main.js';
+import outroRoute from './routes/outro.js';
+import composeRoute from './routes/compose.js';
+import clearSessionRoute from './routes/clearsession.js';
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Ensure cache dir exists
-fs.mkdirSync(SESSION_CACHE_PATH, { recursive: true, mode: 0o777 });
-console.log(`✅ session_cache directory ready at ${SESSION_CACHE_PATH}`);
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
 
-app.use(express.json());
+// Routes
+app.use('/health', healthRoute);
+app.use('/intro', introRoute);
+app.use('/main', mainRoute);
+app.use('/outro', outroRoute);
+app.use('/compose', composeRoute);
+app.use('/clearsession', clearSessionRoute);
 
-// Example health check
-app.get('/', (req, res) => {
-    res.send('Podcast Script Generation Service is running.');
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// Example cache endpoints
-const cache = new MemoryCache();
-
-app.post('/cache', async (req, res) => {
-    const { key, value } = req.body;
-    await cache.set(key, value);
-    res.json({ status: 'ok' });
-});
-
-app.get('/cache/:key', async (req, res) => {
-    const value = await cache.get(req.params.key);
-    res.json({ value });
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err.stack);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
