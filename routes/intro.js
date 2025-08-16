@@ -21,7 +21,7 @@ router.post('/', async (req, res) => {
 
     // Get base intro prompt
     const basePrompt = getIntroPrompt(date, episode);
-    const fullPrompt = `${basePrompt}\n\nGenerate the full SSML-formatted intro as per requirements, do not repeat this prompt text.`;
+    const fullPrompt = `${basePrompt}`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
